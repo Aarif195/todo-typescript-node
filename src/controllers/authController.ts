@@ -86,3 +86,57 @@ export function register(req: IncomingMessage, res: ServerResponse): void {
 }
 
 
+// LOGIN USER
+export function login(req: IncomingMessage, res: ServerResponse): void {
+  let body = "";
+  req.on("data", (chunk) => {
+    body += chunk.toString();
+  });
+
+  req.on("end", () => {
+    const { email, password }: { email: string; password: string } = JSON.parse(body);
+
+    // Validate required fields
+    if (!email || !password) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Email and password are required" }));
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Invalid email format" }));
+    }
+
+    const users = readUsers();
+
+    // Check if user exists
+    const user: User | undefined = users.find(
+      (u) => u.email === email && u.password === hashPassword(password)
+    );
+
+    if (!user) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Invalid credentials" }));
+    }
+
+    // Generate a new token for current login
+    const token = crypto.randomBytes(24).toString("hex");
+
+    // Overwrite all other users' tokens
+    users.forEach((u) => {
+      u.token = u.id === user.id ? token : undefined;
+    });
+
+    // Save users back to file
+    writeUsers(users);
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      message: "Login successful",
+      token,
+      user: { id: user.id, username: user.username, email: user.email }
+    }));
+  });
+}

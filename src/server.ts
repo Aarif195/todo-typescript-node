@@ -5,7 +5,7 @@ import { Todo } from "./types/todo";
 
 const PORT = process.env.PORT || 8080;
 
-import { register } from "./controllers/authController";
+import { register, login } from "./controllers/authController";
 
 const server = http.createServer((req, res) => {
   const url = req.url;
@@ -19,7 +19,9 @@ const server = http.createServer((req, res) => {
     return register(req, res);
   }
 
-
+  if (url === "/api/login" && method === "POST") {
+    return login(req, res);
+  }
 });
 
 server.listen(PORT, () => {
