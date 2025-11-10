@@ -4,9 +4,9 @@ import { Todo } from "./types/todo";
 
 const PORT = process.env.PORT || 8080;
 
-import { createTask , getTasks} from "./controllers/tasksController";
-
 import { register, login } from "./controllers/authController";
+
+import { createTask , getTasks, toggleTaskCompletion,} from "./controllers/tasksController";
 
 const server = http.createServer((req, res) => {
   const url = req.url;
@@ -37,6 +37,17 @@ else if (url && url.startsWith("/api/tasks") && method === "GET")
  {
   return getTasks(req, res);
 }
+
+// Mark task as completed
+else if (url?.startsWith("/api/tasks/") && url.endsWith("/complete") && method === "PATCH") {
+    return toggleTaskCompletion(req, res);
+}
+
+// Mark task as incomplete
+else if (url?.startsWith("/api/tasks/") && url.endsWith("/incomplete") && method === "PATCH") {
+    return toggleTaskCompletion(req, res);
+}
+
 
 
 

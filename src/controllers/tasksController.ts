@@ -214,3 +214,48 @@ export function getTasks(req: IncomingMessage, res: ServerResponse): void {
   });
 }
 
+// Mark todo as completed
+// PATCH - Mark task as completed or incomplete
+export function toggleTaskCompletion(req: IncomingMessage, res: ServerResponse): void {
+    const user = authenticate(req);
+    if (!user) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ message: "Unauthorized" }));
+        return;
+    }
+
+    const urlParts = req.url?.split("/") || [];
+    const taskIdStr = urlParts[urlParts.length - 2]; 
+    const action = urlParts[urlParts.length - 1];   
+    const taskId = parseInt(taskIdStr);
+
+    if (isNaN(taskId)) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ message: "Invalid task ID" }));
+        return;
+    }
+
+    const tasks: Todo[] = JSON.parse(fs.readFileSync(file, "utf8"));
+    const task = tasks.find(t => t.id === taskId && t.userId === user.id);
+
+    if (!task) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ message: "Task not found" }));
+        return;
+    }
+
+    if (action === "complete") task.completed = true;
+    else if (action === "incomplete") task.completed = false;
+    else {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ message: "Invalid action" }));
+        return;
+    }
+
+    task.updatedAt = new Date().toISOString();
+    fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: `Task marked as ${action}`, task }));
+}
+

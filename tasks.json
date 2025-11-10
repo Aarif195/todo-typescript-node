@@ -8,7 +8,8 @@
     "labels": [],
     "userId": 2,
     "createdAt": "2025-11-10T13:01:12.285Z",
-    "updatedAt": "2025-11-10T13:01:12.286Z"
+    "updatedAt": "2025-11-10T15:56:50.753Z",
+    "completed": true
   },
   {
     "id": 2,
@@ -32,9 +33,23 @@
     "labels": [
       "personal"
     ],
-    "completed": true,
+    "completed": false,
     "userId": 2,
     "createdAt": "2025-11-10T14:35:00.679Z",
-    "updatedAt": "2025-11-10T14:35:00.680Z"
+    "updatedAt": "2025-11-10T15:59:27.166Z"
+  },
+  {
+    "id": 4,
+    "title": "Finish TypeScript Todo API",
+    "description": "Write all CRUD endpoints",
+    "priority": "low",
+    "status": "pending",
+    "labels": [
+      "personal"
+    ],
+    "completed": true,
+    "userId": 2,
+    "createdAt": "2025-11-10T15:31:49.002Z",
+    "updatedAt": "2025-11-10T15:31:49.002Z"
   }
 ]
