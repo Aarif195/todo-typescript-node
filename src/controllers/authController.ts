@@ -152,7 +152,7 @@ export function authenticate(req: IncomingMessage): User | null {
     const token = parts[1];
 
     // Load users
-    const users = JSON.parse(fs.readFileSync(file, "utf8"));
+    const users: User[] = JSON.parse(fs.readFileSync(file, "utf8"));
     const user = users.find(u => u.token === token);
 
     return user || null;

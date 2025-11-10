@@ -1,6 +1,19 @@
 // src/types/todo.ts
+// export type Todo = {
+//   id: string;
+//   title: string;
+//   completed: boolean;
+// };
+
+
 export type Todo = {
-  id: string;
+  id: number; 
   title: string;
-  completed: boolean;
+  description: string;
+  priority: "low" | "medium" | "high";
+  status: "pending" | "in-progress" | "completed";
+  labels: string[];
+  createdAt: string;
+  updatedAt: string;
+  userId: number;
 };

@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "title": "Finish TypeScript Todo API",
+    "description": "Write all CRUD endpoints",
+    "priority": "high",
+    "status": "pending",
+    "labels": [],
+    "userId": 2,
+    "createdAt": "2025-11-10T13:01:12.285Z",
+    "updatedAt": "2025-11-10T13:01:12.286Z"
+  },
+  {
+    "id": 2,
+    "title": "Finish TypeScript Todo API",
+    "description": "Write all CRUD endpoints",
+    "priority": "high",
+    "status": "pending",
+    "labels": [
+      "personal"
+    ],
+    "userId": 2,
+    "createdAt": "2025-11-10T13:26:00.301Z",
+    "updatedAt": "2025-11-10T13:26:00.301Z"
+  }
+]

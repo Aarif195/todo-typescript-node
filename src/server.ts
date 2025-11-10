@@ -4,6 +4,8 @@ import { Todo } from "./types/todo";
 
 const PORT = process.env.PORT || 8080;
 
+import { createTask } from "./controllers/tasksController";
+
 import { register, login } from "./controllers/authController";
 
 const server = http.createServer((req, res) => {
@@ -24,9 +26,13 @@ const server = http.createServer((req, res) => {
     return login(req, res);
   }
 
+  // CREATE TASK
+else if (url === "/api/tasks" && method === "POST") {
+  return createTask(req, res);
+}
 
 
-  
+
 
 });
 
