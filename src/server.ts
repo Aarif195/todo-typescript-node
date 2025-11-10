@@ -4,7 +4,7 @@ import { Todo } from "./types/todo";
 
 const PORT = process.env.PORT || 8080;
 
-import { createTask } from "./controllers/tasksController";
+import { createTask , getTasks} from "./controllers/tasksController";
 
 import { register, login } from "./controllers/authController";
 
@@ -31,6 +31,12 @@ else if (url === "/api/tasks" && method === "POST") {
   return createTask(req, res);
 }
 
+
+// GET TASKS
+else if (url && url.startsWith("/api/tasks") && method === "GET")
+ {
+  return getTasks(req, res);
+}
 
 
 

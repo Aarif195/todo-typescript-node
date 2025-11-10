@@ -5,14 +5,14 @@
 //   completed: boolean;
 // };
 
-
 export type Todo = {
-  id: number; 
+  id: number;
   title: string;
   description: string;
   priority: "low" | "medium" | "high";
   status: "pending" | "in-progress" | "completed";
   labels: string[];
+  completed: boolean;
   createdAt: string;
   updatedAt: string;
   userId: number;

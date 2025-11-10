@@ -17,7 +17,7 @@ function sendError(res: ServerResponse, message: string): void {
   res.end(JSON.stringify({ error: message }));
 }
 
-  // CREATE TASK
+// CREATE TASK
 export const createTask = (req: IncomingMessage, res: ServerResponse): void => {
   const user = authenticate(req);
   if (!user) {
@@ -32,10 +32,16 @@ export const createTask = (req: IncomingMessage, res: ServerResponse): void => {
   });
 
   req.on("end", () => {
-    const { title, description, priority, status, labels }: Partial<Todo> =
-      JSON.parse(body);
+    const {
+      title,
+      description,
+      priority,
+      status,
+      labels,
+      completed,
+    }: Partial<Todo> = JSON.parse(body);
 
-    // === VALIDATIONS ===
+    //  VALIDATIONS
     if (!title?.trim()) return sendError(res, "Title is required.");
     if (!description?.trim()) return sendError(res, "Description is required.");
 
@@ -53,6 +59,11 @@ export const createTask = (req: IncomingMessage, res: ServerResponse): void => {
     if (!labels.every((label) => allowedLabels.includes(label)))
       return sendError(res, "Invalid label(s) provided.");
 
+    if (typeof completed !== "boolean") {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Completed must be boolean" }));
+    }
+
     const tasks: Todo[] = JSON.parse(fs.readFileSync(file, "utf8"));
 
     const newTask: Todo = {
@@ -62,6 +73,7 @@ export const createTask = (req: IncomingMessage, res: ServerResponse): void => {
       priority,
       status,
       labels,
+      completed,
       userId: user.id,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -76,3 +88,129 @@ export const createTask = (req: IncomingMessage, res: ServerResponse): void => {
     );
   });
 };
+
+// GET TASKS
+export function getTasks(req: IncomingMessage, res: ServerResponse): void {
+  fs.readFile(file, "utf8", (err, data) => {
+    if (err) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Internal server error" }));
+    }
+
+    let tasks: Todo[] = [];
+    try {
+      tasks = JSON.parse(data);
+      if (!Array.isArray(tasks)) tasks = [];
+    } catch {
+      tasks = [];
+    }
+
+    // Sort newest first
+    tasks.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    const fullUrl = new URL(req.url || "", `http://${req.headers.host}`);
+    const queryParams = Object.fromEntries(fullUrl.searchParams.entries());
+
+    const page = Math.max(1, parseInt(queryParams.page || "1"));
+    const limit = Math.max(1, parseInt(queryParams.limit || "10"));
+
+    // --- Validate filters ---
+    for (const key in queryParams) {
+      const value = queryParams[key].toLowerCase();
+
+      if (
+        !["page", "limit", "status", "priority", "labels", "search"].includes(
+          key
+        )
+      ) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: `Invalid query key: ${key}` }));
+      }
+
+      if (key === "status" && !allowedStatuses.includes(value)) {
+        return res.end(
+          JSON.stringify({
+            totalData: 0,
+            totalPages: 0,
+            currentPage: page,
+            limit,
+            data: [],
+          })
+        );
+      }
+
+      if (key === "priority" && !allowedPriorities.includes(value)) {
+        return res.end(
+          JSON.stringify({
+            totalData: 0,
+            totalPages: 0,
+            currentPage: page,
+            limit,
+            data: [],
+          })
+        );
+      }
+
+      if (key === "labels" && !allowedLabels.includes(value)) {
+        return res.end(
+          JSON.stringify({
+            totalData: 0,
+            totalPages: 0,
+            currentPage: page,
+            limit,
+            data: [],
+          })
+        );
+      }
+    }
+
+    // --- Apply filtering ---
+    let filteredTasks = [...tasks];
+    for (const key in queryParams) {
+      const value = queryParams[key].toLowerCase();
+
+      if (key === "search") {
+        filteredTasks = filteredTasks.filter(
+          (task) =>
+            task.title.toLowerCase().includes(value) ||
+            task.description.toLowerCase().includes(value) ||
+            (Array.isArray(task.labels) &&
+              task.labels.some((label) => label.toLowerCase().includes(value)))
+        );
+      } else if (key === "labels") {
+        filteredTasks = filteredTasks.filter(
+          (task) =>
+            Array.isArray(task.labels) &&
+            task.labels.map((label) => label.toLowerCase()).includes(value)
+        );
+      } else if (key === "status" || key === "priority") {
+        filteredTasks = filteredTasks.filter(
+          (task) => task[key] && task[key].toLowerCase() === value
+        );
+      }
+    }
+
+    // --- Pagination ---
+    const totalData = filteredTasks.length;
+    const totalPages = totalData === 0 ? 0 : Math.ceil(totalData / limit);
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const dataSlice =
+      startIndex < totalData ? filteredTasks.slice(startIndex, endIndex) : [];
+
+    const response = {
+      totalData,
+      totalPages,
+      currentPage: page,
+      limit,
+      data: dataSlice,
+    };
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(response));
+  });
+}
+
