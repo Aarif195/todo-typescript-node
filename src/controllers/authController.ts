@@ -140,3 +140,20 @@ export function login(req: IncomingMessage, res: ServerResponse): void {
     }));
   });
 }
+
+// AUTHENTICATION
+export function authenticate(req: IncomingMessage): User | null {
+    const authHeader = req.headers["authorization"];
+    if (!authHeader) return null;
+
+    const parts = authHeader.trim().split(/\s+/);
+    if (parts.length !== 2 || parts[0] !== "Bearer") return null;
+
+    const token = parts[1];
+
+    // Load users
+    const users = JSON.parse(fs.readFileSync(file, "utf8"));
+    const user = users.find(u => u.token === token);
+
+    return user || null;
+}

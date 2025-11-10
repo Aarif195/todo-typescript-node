@@ -1,6 +1,5 @@
 import http from "http";
 
-
 import { Todo } from "./types/todo";
 
 const PORT = process.env.PORT || 8080;
@@ -15,13 +14,20 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ message: "Hello TypeScript Node" }));
   }
 
+  // Register
   if (url === "/api/register" && method === "POST") {
     return register(req, res);
   }
 
+  // Login
   if (url === "/api/login" && method === "POST") {
     return login(req, res);
   }
+
+
+
+  
+
 });
 
 server.listen(PORT, () => {
