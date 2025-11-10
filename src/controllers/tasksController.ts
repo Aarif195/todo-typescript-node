@@ -167,6 +167,7 @@ export function getTasks(req: IncomingMessage, res: ServerResponse): void {
       }
     }
 
+
     // --- Apply filtering ---
     let filteredTasks = [...tasks];
     for (const key in queryParams) {
@@ -193,6 +194,8 @@ export function getTasks(req: IncomingMessage, res: ServerResponse): void {
       }
     }
 
+    
+
     // --- Pagination ---
     const totalData = filteredTasks.length;
     const totalPages = totalData === 0 ? 0 : Math.ceil(totalData / limit);
@@ -214,8 +217,7 @@ export function getTasks(req: IncomingMessage, res: ServerResponse): void {
   });
 }
 
-// Mark todo as completed
-// PATCH - Mark task as completed or incomplete
+// Mark task as completed or incomplete
 export function toggleTaskCompletion(req: IncomingMessage, res: ServerResponse): void {
     const user = authenticate(req);
     if (!user) {
@@ -259,3 +261,28 @@ export function toggleTaskCompletion(req: IncomingMessage, res: ServerResponse):
     res.end(JSON.stringify({ message: `Task marked as ${action}`, task }));
 }
 
+
+export function getTaskById(req: IncomingMessage, res: ServerResponse): void {
+  const urlParts = req.url?.split("/") || [];
+  const idStr = urlParts[urlParts.length - 1]; 
+  const id = parseInt(idStr);
+
+  const data = fs.readFileSync(file, "utf8");
+  let tasks: Todo[] = [];
+  try {
+    tasks = JSON.parse(data);
+    if (!Array.isArray(tasks)) tasks = [];
+  } catch {
+    tasks = [];
+  }
+
+  const task = tasks.find((t) => t.id === id);
+
+  if (!task) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+     res.end(JSON.stringify({ message: "Task not found" }));
+  }
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(task));
+}

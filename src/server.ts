@@ -6,7 +6,7 @@ const PORT = process.env.PORT || 8080;
 
 import { register, login } from "./controllers/authController";
 
-import { createTask , getTasks, toggleTaskCompletion,} from "./controllers/tasksController";
+import { createTask , getTasks, toggleTaskCompletion,getTaskById} from "./controllers/tasksController";
 
 const server = http.createServer((req, res) => {
   const url = req.url;
@@ -29,6 +29,11 @@ const server = http.createServer((req, res) => {
   // CREATE TASK
 else if (url === "/api/tasks" && method === "POST") {
   return createTask(req, res);
+}
+
+// GET TASK BY ID
+else if (url?.startsWith("/api/tasks/") && method === "GET") {
+  return getTaskById(req, res);
 }
 
 
