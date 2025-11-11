@@ -79,5 +79,51 @@
     "userId": 2,
     "createdAt": "2025-11-11T09:52:12.094Z",
     "updatedAt": "2025-11-11T09:52:12.095Z"
+  },
+  {
+    "id": 9,
+    "title": "Finish TypeScript Todo API",
+    "description": "Write all CRUD endpoints",
+    "priority": "low",
+    "status": "pending",
+    "labels": [
+      "personal"
+    ],
+    "completed": false,
+    "userId": 2,
+    "createdAt": "2025-11-11T10:26:42.819Z",
+    "updatedAt": "2025-11-11T10:26:42.819Z",
+    "isLiked": true,
+    "likesCount": 1
+  },
+  {
+    "id": 10,
+    "title": "Finish TypeScript Todo API",
+    "description": "Write all CRUD endpoints",
+    "priority": "low",
+    "status": "pending",
+    "labels": [
+      "personal"
+    ],
+    "completed": false,
+    "userId": 2,
+    "createdAt": "2025-11-11T10:26:58.320Z",
+    "updatedAt": "2025-11-11T10:26:58.320Z"
+  },
+  {
+    "id": 11,
+    "title": "Finish TypeScript Todo API",
+    "description": "Write all CRUD endpoints",
+    "priority": "low",
+    "status": "pending",
+    "labels": [
+      "personal"
+    ],
+    "completed": false,
+    "userId": 2,
+    "createdAt": "2025-11-11T10:27:09.895Z",
+    "updatedAt": "2025-11-11T10:27:09.895Z",
+    "isLiked": false,
+    "likesCount": 0
   }
 ]

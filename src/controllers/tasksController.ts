@@ -2,6 +2,7 @@ import { IncomingMessage, ServerResponse } from "http";
 import fs from "fs";
 import path from "path";
 import { Todo } from "../types/todo";
+import { User } from '../types/user';
 import { authenticate } from "./authController";
 
 const file = path.join(__dirname, "../../tasks.json");
@@ -468,4 +469,67 @@ export function deleteTask(req: IncomingMessage, res: ServerResponse): void {
   // 
   res.writeHead(204, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ message: "Task deleted", deletedTask }));
+}
+
+
+// LIKE TASK
+export function likeTask(req: IncomingMessage, res: ServerResponse): void {
+ const user: User | null = authenticate(req);
+ if (!user) {
+res.writeHead(401, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ message: "Unauthorized" }));
+ return
+
+}
+
+ // Extract taskId using the standard pop() method
+const urlParts = req.url?.split("/") || [];
+const taskIdStr = urlParts[urlParts.length - 2];  
+const taskId = parseInt(taskIdStr);
+
+ const data = fs.readFileSync(file, "utf8");
+ let tasks: Todo[] = JSON.parse(data) as Todo[];
+
+ const index = tasks.findIndex((t) => t.id === taskId);
+ if (index === -1) {
+ res.writeHead(404, { "Content-Type": "application/json" });
+ res.end(JSON.stringify({ message: "Task not found" }));
+  return
+}
+
+ let task = tasks[index];
+ let message: string;
+
+if (task.userId !== user.id) {
+res.writeHead(403, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ message: "Forbidden: You can only like/unlike your own task." }));
+  return
+}
+
+ 
+if (typeof task.isLiked === "undefined") {
+ task.isLiked = false;
+ }
+ if (typeof task.likesCount !== "number") {
+task.likesCount = 0;
+ }
+
+ //  Toggle like state
+ if (task.isLiked) {
+ task.likesCount = Math.max(task.likesCount - 1, 0);
+ task.isLiked = false;
+ message = "Task unliked!";
+ } else {
+ task.likesCount += 1;
+ task.isLiked = true;
+ message = "Task liked!";
+ }
+
+ //  Save updated task list
+ tasks[index] = task;
+ fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
+
+ //  Response
+ res.writeHead(200, { "Content-Type": "application/json" });
+ res.end(JSON.stringify({ message: message, task: task }));
 }

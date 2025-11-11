@@ -6,7 +6,15 @@ const PORT = process.env.PORT || 8080;
 
 import { register, login } from "./controllers/authController";
 
-import { createTask , getTasks, updateTask, toggleTaskCompletion,getTaskById, deleteTask} from "./controllers/tasksController";
+import {
+  createTask,
+  getTasks,
+  updateTask,
+  toggleTaskCompletion,
+  getTaskById,
+  deleteTask,
+  likeTask,
+} from "./controllers/tasksController";
 
 const server = http.createServer((req, res) => {
   const url = req.url;
@@ -27,48 +35,56 @@ const server = http.createServer((req, res) => {
   }
 
   // CREATE TASK
-else if (url === "/api/tasks" && method === "POST") {
-  return createTask(req, res);
-}
+  else if (url === "/api/tasks" && method === "POST") {
+    return createTask(req, res);
+  }
 
-// GET TASK BY ID
-else if (url?.startsWith("/api/tasks/") && method === "GET") {
-  return getTaskById(req, res);
-}
+  // GET TASK BY ID
+  else if (url?.startsWith("/api/tasks/") && method === "GET") {
+    return getTaskById(req, res);
+  }
 
+  // GET TASKS
+  else if (url && url.startsWith("/api/tasks") && method === "GET") {
+    return getTasks(req, res);
+  }
 
-// GET TASKS
-else if (url && url.startsWith("/api/tasks") && method === "GET")
- {
-  return getTasks(req, res);
-}
+  // UPDATE TASK
+  else if (url?.startsWith("/api/tasks/") && method === "PATCH") {
+    return updateTask(req, res);
+  }
 
-
-// UPDATE TASK
-else if (url?.startsWith("/api/tasks/") && method === "PATCH") {
-  return updateTask(req, res);
-}
-
-
-// Mark task as completed
-else if (url?.startsWith("/api/tasks/") && url.endsWith("/complete") && method === "PATCH") {
+  // Mark task as completed
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.endsWith("/complete") &&
+    method === "PATCH"
+  ) {
     return toggleTaskCompletion(req, res);
-}
+  }
 
-// Mark task as incomplete
-else if (url?.startsWith("/api/tasks/") && url.endsWith("/incomplete") && method === "PATCH") {
+  // Mark task as incomplete
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.endsWith("/incomplete") &&
+    method === "PATCH"
+  ) {
     return toggleTaskCompletion(req, res);
-}
+  }
 
+  // DELETE TASK
+  else if (url?.startsWith("/api/tasks/") && method === "DELETE") {
+    return deleteTask(req, res);
+  }
 
- // delete
-    else if (url?.startsWith("/api/tasks/") && method === "DELETE") {
-        return deleteTask(req, res);
-    }
-
-
-
-
+  // LIKE TASK
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.endsWith("/like") &&
+    method === "POST"
+  ) {
+    return likeTask(req, res);
+  }
 });
 
 server.listen(PORT, () => {

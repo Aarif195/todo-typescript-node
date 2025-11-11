@@ -16,4 +16,6 @@ export type Todo = {
   createdAt: string;
   updatedAt: string;
   userId: number;
+  isLiked?: boolean;     
+  likesCount?: number;
 };
