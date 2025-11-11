@@ -759,3 +759,68 @@ export function getMyTasks(req: IncomingMessage, res: ServerResponse) {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(userTasks));
 }
+
+
+// LIKE/UNLIKE A COMMENT 
+export function likeComment(req: IncomingMessage, res: ServerResponse) {
+
+ const user = authenticate(req);
+ if (!user) {
+res.writeHead(401, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Unauthorized" }));
+}
+
+// COMMENT_IDs
+ const urlParts = req.url?.split("/") || [];
+ const taskId = parseInt(urlParts[3] || '0');
+ const commentId = parseInt(urlParts[5] || '0');
+
+ const data = fs.readFileSync(file, "utf8");
+ const tasks = JSON.parse(data) as Todo[];
+
+ //  Find Task
+ const taskIndex = tasks.findIndex(t => t.id === taskId);
+if (taskIndex === -1) {
+ res.writeHead(404, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Task not found" }));
+ }
+ let task = tasks[taskIndex];
+
+ // Ensure comments array exists and is an array
+ if (!Array.isArray(task.comments)) {
+ res.writeHead(404, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Task comments structure is invalid" }));
+ }
+
+ //  Find Comment
+ const comment = (task.comments as any).find((c: Comment) => c.id === commentId); 
+ if (!comment) {
+ res.writeHead(404, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Comment not found" }));
+ }
+
+ //  Initialization and STRICT OWNERSHIP CHECK
+ if (typeof comment.isLiked === "undefined") comment.isLiked = false;
+
+ if (comment.userId !== user.id) { 
+res.writeHead(403, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Forbidden: You are only allowed to like your own comment" }));
+}
+
+ //  Toggle Like State
+ let message;
+if (comment.isLiked) {
+ comment.isLiked = false;
+ message = "Comment unliked!";
+ } else {
+ comment.isLiked = true;
+ message = "Comment liked!";
+}
+
+ //  Save and Respond
+ tasks[taskIndex] = task;
+ fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
+
+ res.writeHead(200, { "Content-Type": "application/json" });
+ res.end(JSON.stringify({ message, comment }));
+}

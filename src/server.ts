@@ -15,7 +15,10 @@ import {
   deleteTask,
   likeTask,
   postTaskComment,
-  replyTaskComment, getTaskComments, getMyTasks
+  replyTaskComment,
+  getTaskComments,
+  getMyTasks,
+  likeComment,
 } from "./controllers/tasksController";
 
 const server = http.createServer((req, res) => {
@@ -31,9 +34,22 @@ const server = http.createServer((req, res) => {
     return register(req, res);
   }
 
+
+  
   // Login
   if (url === "/api/login" && method === "POST") {
     return login(req, res);
+  }
+
+ 
+ // like/unlike a comment
+  if (
+    url?.startsWith("/api/tasks/") &&
+    url.includes("/comments/") &&
+    url.endsWith("/like") &&
+    method === "POST"
+  ) {
+    return likeComment(req, res);
   }
 
   // CREATE TASK
@@ -41,17 +57,20 @@ const server = http.createServer((req, res) => {
     return createTask(req, res);
   }
 
-   // get comment
-    else if (url?.startsWith("/api/tasks/") && url.endsWith("/comments") && method === "GET") {
-        return getTaskComments(req, res)
-    }
+
+  // get comment
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.endsWith("/comments") &&
+    method === "GET"
+  ) {
+    return getTaskComments(req, res);
+  }
 
   // GET TASK BY ID
   else if (url?.startsWith("/api/tasks/") && method === "GET") {
     return getTaskById(req, res);
   }
-
-  
 
   // GET TASKS
   else if (url && url.startsWith("/api/tasks") && method === "GET") {
@@ -81,27 +100,30 @@ const server = http.createServer((req, res) => {
     return toggleTaskCompletion(req, res);
   }
 
-
   // POST COMMENT
- else if (url?.startsWith("/api/tasks/") && url.endsWith("/comments") && method === "POST") {
-        return postTaskComment(req, res);
-    }
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.endsWith("/comments") &&
+    method === "POST"
+  ) {
+    return postTaskComment(req, res);
+  }
 
-
-     // reply to a comment
-    else if (url?.startsWith("/api/tasks/") && url.includes("/comment/") && url.endsWith("/reply") && method === "POST") {
-        return replyTaskComment(req, res);
-    }
-
-   
+  // reply to a comment
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.includes("/comment/") &&
+    url.endsWith("/reply") &&
+    method === "POST"
+  ) {
+    return replyTaskComment(req, res);
+  }
 
   // DELETE TASK
   else if (url?.startsWith("/api/tasks/") && method === "DELETE") {
     return deleteTask(req, res);
   }
 
-
-  
   // LIKE TASK
   else if (
     url?.startsWith("/api/tasks/") &&
@@ -109,19 +131,14 @@ const server = http.createServer((req, res) => {
     method === "POST"
   ) {
     return likeTask(req, res);
+  } else if (url === "/api/user/my-tasks" && method === "GET") {
+    getMyTasks(req, res);
   }
 
 
- else if (url === "/api/user/my-tasks" && method === "GET") {
-        getMyTasks(req, res);
-    }
 
   
 });
-
-
-
-
 
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT} `);
