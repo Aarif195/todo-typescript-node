@@ -14,6 +14,7 @@ import {
   getTaskById,
   deleteTask,
   likeTask,
+  postTaskComment
 } from "./controllers/tasksController";
 
 const server = http.createServer((req, res) => {
@@ -72,6 +73,12 @@ const server = http.createServer((req, res) => {
     return toggleTaskCompletion(req, res);
   }
 
+
+  // POST COMMENT
+ else if (url?.startsWith("/api/tasks/") && url.endsWith("/comments") && method === "POST") {
+        return postTaskComment(req, res);
+    }
+
   // DELETE TASK
   else if (url?.startsWith("/api/tasks/") && method === "DELETE") {
     return deleteTask(req, res);
@@ -86,6 +93,10 @@ const server = http.createServer((req, res) => {
     return likeTask(req, res);
   }
 });
+
+
+
+
 
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT} `);

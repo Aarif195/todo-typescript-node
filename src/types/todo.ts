@@ -17,5 +17,24 @@ export type Todo = {
   updatedAt: string;
   userId: number;
   isLiked?: boolean;     
-  likesCount?: number;
+ likesCount?: number;
+ comments?: Comment[];
+};
+
+
+export type Reply = {
+id: number;
+ userId: number;
+ username: string;
+text: string;
+ date: string;
+};
+
+export type Comment = {
+ id: number;
+ userId: number; 
+ username: string;  
+ text: string;
+ date: string;
+ replies: Reply[];
 };

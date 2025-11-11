@@ -1,7 +1,7 @@
 import { IncomingMessage, ServerResponse } from "http";
 import fs from "fs";
 import path from "path";
-import { Todo } from "../types/todo";
+import { Todo , Comment, Reply} from "../types/todo";
 import { User } from '../types/user';
 import { authenticate } from "./authController";
 
@@ -532,4 +532,74 @@ task.likesCount = 0;
  //  Response
  res.writeHead(200, { "Content-Type": "application/json" });
  res.end(JSON.stringify({ message: message, task: task }));
+}
+
+// POST COMMENT /ADD 
+export function postTaskComment(req: IncomingMessage, res: ServerResponse) {
+
+const user = authenticate(req);
+ if (!user) {
+ res.writeHead(401, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Unauthorized" }));
+ }
+
+ // Extract ID using the new agreed upon method
+ const urlParts = req.url?.split("/") || [];
+ const taskIdStr = urlParts[urlParts.length - 2]; 
+ const taskId = parseInt(taskIdStr);
+
+ let body = "";
+
+ req.on("data", chunk => {
+ body += chunk.toString();
+    });
+
+ req.on("end", () => {
+ let parsedBody: { text?: string };
+ try {
+    parsedBody = JSON.parse(body);
+ } catch {
+     res.writeHead(400, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Invalid JSON body" }));
+        }
+        const { text } = parsedBody;
+        
+        if (!text || text.trim() === "") {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            return res.end(JSON.stringify({ message: "Comment text is required" }));
+        }
+
+        const data = JSON.parse(fs.readFileSync(file, "utf8"));
+        // Cast data to Todo[] and article to Todo | undefined
+ const tasks: Todo[] = data as Todo[];
+ const taskIndex = tasks.findIndex(t => t.id === taskId);
+        
+        if (taskIndex === -1) {
+     res.writeHead(404, { "Content-Type": "application/json" });
+     return res.end(JSON.stringify({ message: "Task not found" }));
+        }
+        
+        let task = tasks[taskIndex];
+
+ // Ensure task.comments exists and is an array (Type safety + Initialization)
+        if (!Array.isArray(task.comments)) {
+     task.comments = [];
+        }
+
+        // Create the new Comment object (Type-safe using explicit properties)
+        const newComment: Comment = {
+     id: Date.now(),
+     userId: user.id, // Use ID
+     username: user.username, // Include username for display
+     text: text.trim(),
+     date: new Date().toISOString(),
+     replies: []
+ };
+
+        task.comments.push(newComment);
+        fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
+
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(newComment));
+    });
 }

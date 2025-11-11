@@ -78,7 +78,33 @@
     "completed": false,
     "userId": 2,
     "createdAt": "2025-11-11T09:52:12.094Z",
-    "updatedAt": "2025-11-11T09:52:12.095Z"
+    "updatedAt": "2025-11-11T09:52:12.095Z",
+    "comments": [
+      {
+        "id": 1762860214306,
+        "userId": 2,
+        "username": "Ayoolamhi",
+        "text": "yesyyyyyyyyyyyess",
+        "date": "2025-11-11T11:23:34.306Z",
+        "replies": []
+      },
+      {
+        "id": 1762860256326,
+        "userId": 2,
+        "username": "Ayoolamhi",
+        "text": "nooooo",
+        "date": "2025-11-11T11:24:16.326Z",
+        "replies": []
+      },
+      {
+        "id": 1762860262939,
+        "userId": 2,
+        "username": "Ayoolamhi",
+        "text": "nooooo",
+        "date": "2025-11-11T11:24:22.939Z",
+        "replies": []
+      }
+    ]
   },
   {
     "id": 9,
