@@ -167,7 +167,6 @@ export function getTasks(req: IncomingMessage, res: ServerResponse): void {
       }
     }
 
-
     // --- Apply filtering ---
     let filteredTasks = [...tasks];
     for (const key in queryParams) {
@@ -194,8 +193,6 @@ export function getTasks(req: IncomingMessage, res: ServerResponse): void {
       }
     }
 
-    
-
     // --- Pagination ---
     const totalData = filteredTasks.length;
     const totalPages = totalData === 0 ? 0 : Math.ceil(totalData / limit);
@@ -218,53 +215,56 @@ export function getTasks(req: IncomingMessage, res: ServerResponse): void {
 }
 
 // Mark task as completed or incomplete
-export function toggleTaskCompletion(req: IncomingMessage, res: ServerResponse): void {
-    const user = authenticate(req);
-    if (!user) {
-        res.writeHead(401, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ message: "Unauthorized" }));
-        return;
-    }
+export function toggleTaskCompletion(
+  req: IncomingMessage,
+  res: ServerResponse
+): void {
+  const user = authenticate(req);
+  if (!user) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Unauthorized" }));
+    return;
+  }
 
-    const urlParts = req.url?.split("/") || [];
-    const taskIdStr = urlParts[urlParts.length - 2]; 
-    const action = urlParts[urlParts.length - 1];   
-    const taskId = parseInt(taskIdStr);
+  const urlParts = req.url?.split("/") || [];
+  const taskIdStr = urlParts[urlParts.length - 2];
+  const action = urlParts[urlParts.length - 1];
+  const taskId = parseInt(taskIdStr);
 
-    if (isNaN(taskId)) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ message: "Invalid task ID" }));
-        return;
-    }
+  if (isNaN(taskId)) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Invalid task ID" }));
+    return;
+  }
 
-    const tasks: Todo[] = JSON.parse(fs.readFileSync(file, "utf8"));
-    const task = tasks.find(t => t.id === taskId && t.userId === user.id);
+  const tasks: Todo[] = JSON.parse(fs.readFileSync(file, "utf8"));
+  const task = tasks.find((t) => t.id === taskId && t.userId === user.id);
 
-    if (!task) {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ message: "Task not found" }));
-        return;
-    }
+  if (!task) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Task not found" }));
+    return;
+  }
 
-    if (action === "complete") task.completed = true;
-    else if (action === "incomplete") task.completed = false;
-    else {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ message: "Invalid action" }));
-        return;
-    }
+  if (action === "complete") task.completed = true;
+  else if (action === "incomplete") task.completed = false;
+  else {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Invalid action" }));
+    return;
+  }
 
-    task.updatedAt = new Date().toISOString();
-    fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
+  task.updatedAt = new Date().toISOString();
+  fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
 
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: `Task marked as ${action}`, task }));
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ message: `Task marked as ${action}`, task }));
 }
 
-
+//  get Task By by ID
 export function getTaskById(req: IncomingMessage, res: ServerResponse): void {
   const urlParts = req.url?.split("/") || [];
-  const idStr = urlParts[urlParts.length - 1]; 
+  const idStr = urlParts[urlParts.length - 1];
   const id = parseInt(idStr);
 
   const data = fs.readFileSync(file, "utf8");
@@ -280,9 +280,138 @@ export function getTaskById(req: IncomingMessage, res: ServerResponse): void {
 
   if (!task) {
     res.writeHead(404, { "Content-Type": "application/json" });
-     res.end(JSON.stringify({ message: "Task not found" }));
+    res.end(JSON.stringify({ message: "Task not found" }));
   }
 
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify(task));
+}
+
+// UPDATED
+export function updateTask(req: IncomingMessage, res: ServerResponse): void {
+  const user = authenticate(req);
+
+  if (!user) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Unauthorized" }));
+    return;
+  }
+
+  const urlParts = req.url?.split("/") || [];
+  const taskId = parseInt(urlParts[urlParts.length - 1]);
+  let body = "";
+
+  req.on("data", (chunk) => {
+    body += chunk;
+  });
+
+  req.on("end", () => {
+    let updatedData: Partial<
+      Pick<Todo, "title" | "description" | "status" | "priority" | "labels">
+    >;
+
+    try {
+      updatedData = JSON.parse(body);
+    } catch {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Invalid JSON" }));
+    }
+
+    const data = fs.readFileSync(file, "utf8");
+    const tasks: Todo[] = JSON.parse(data);
+
+    const index = tasks.findIndex((t) => t.id === taskId);
+    if (index === -1) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Task not found" }));
+    }
+
+    if (tasks[index].userId !== user.id) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({
+          message: "Forbidden: You can only update your own tasks",
+        })
+      );
+    }
+
+    //  VALIDATIONS
+    const { title, description, status, priority, labels } = updatedData;
+
+    if (title !== undefined && title.trim() === "") {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Title cannot be empty" }));
+    }
+
+    if (description !== undefined && description.trim() === "") {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({ message: "Description cannot be empty" })
+      );
+    }
+
+    if (status && !allowedStatuses.includes(status.toLowerCase())) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({
+          message: `Invalid status. Allowed: ${allowedStatuses.join(", ")}`,
+        })
+      );
+    }
+
+  
+
+    if (priority && !allowedPriorities.includes(priority.toLowerCase())) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({
+          message: `Invalid priority. Allowed: ${allowedPriorities.join(", ")}`,
+        })
+      );
+    }
+
+    if (labels && Array.isArray(labels)) {
+      const invalidLabels = labels.filter(
+        (label) => !allowedLabels.includes(label.toLowerCase())
+      );
+      if (invalidLabels.length > 0) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        return res.end(
+          JSON.stringify({
+            message: `Invalid labels: ${invalidLabels.join(
+              ", "
+            )}. Allowed: ${allowedLabels.join(", ")}`,
+          })
+        );
+      }
+    }
+
+    // RETURNING UPDATE TASK 
+    const taskToUpdate = tasks[index];
+
+    const updatedTask: Todo = {
+      ...taskToUpdate,
+      title: title !== undefined ? title.trim() : taskToUpdate.title,
+      description:
+        description !== undefined
+          ? description.trim()
+          : taskToUpdate.description,
+      status: status
+        ? (status.toLowerCase() as Todo["status"])
+        : taskToUpdate.status,
+      priority: priority
+        ? (priority.toLowerCase() as Todo["priority"])
+        : taskToUpdate.priority,
+      labels: labels ? labels.map((l) => l.toLowerCase()) : taskToUpdate.labels,
+      updatedAt: new Date().toISOString(),
+    };
+
+    tasks[index] = updatedTask;
+    fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({ message: "Task updated successfully", updatedTask })
+    );
+  });
 }

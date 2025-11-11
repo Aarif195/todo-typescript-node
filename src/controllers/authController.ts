@@ -157,3 +157,5 @@ export function authenticate(req: IncomingMessage): User | null {
 
     return user || null;
 }
+
+
