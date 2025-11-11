@@ -282,10 +282,13 @@ export function getTaskById(req: IncomingMessage, res: ServerResponse): void {
   if (!task) {
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ message: "Task not found" }));
+    
+    
   }
 
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify(task));
+  
 }
 
 // UPDATED
@@ -691,4 +694,39 @@ export function replyTaskComment(req: IncomingMessage, res: ServerResponse) {
     res.writeHead(201, { "Content-Type": "application/json" });
     res.end(JSON.stringify(newReply));
   });
+}
+
+
+// GET TASK COMMENTS (PURE FUNCTION)
+export function getTaskComments(req: IncomingMessage, res: ServerResponse) {
+
+ // 1. AUTHENTICATION: Ensure the user is logged in
+ const user = authenticate(req);
+ if (!user) {
+ res.writeHead(401, { "Content-Type": "application/json" });
+return res.end(JSON.stringify({ message: "Unauthorized" }));
+ }
+
+ // 2. EXTRACT TASK ID: Assuming URL pattern /api/tasks/ID/comments
+ const urlParts = req.url?.split("/") || [];
+ const taskIdStr = urlParts[urlParts.length - 2]; 
+ const taskId = parseInt(taskIdStr);
+
+ // 3. READ DATA AND FIND TASK
+ const data = fs.readFileSync(file, "utf8");
+ const tasks: Todo[] = JSON.parse(data) as Todo[];
+
+ const task = tasks.find(t => t.id === taskId);
+ if (!task) {
+ res.writeHead(404, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Task not found" }));
+ }
+
+ //  EXTRACT COMMENTS
+
+const comments = task.comments || [];
+
+ // 5. RESPONSE
+ res.writeHead(200, { "Content-Type": "application/json" });
+ res.end(JSON.stringify(comments));
 }

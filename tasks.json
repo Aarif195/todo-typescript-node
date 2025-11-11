@@ -110,7 +110,22 @@
         "username": "Ayoolamhi",
         "text": "nooooo",
         "date": "2025-11-11T11:30:47.362Z",
-        "replies": []
+        "replies": [
+          {
+            "id": 1762865429421,
+            "userId": 2,
+            "username": "Ayoolamhi",
+            "text": "yooo oooowow",
+            "date": "2025-11-11T12:50:29.421Z"
+          },
+          {
+            "id": 1762865434499,
+            "userId": 2,
+            "username": "Ayoolamhi",
+            "text": "yooo oooowow",
+            "date": "2025-11-11T12:50:34.499Z"
+          }
+        ]
       },
       {
         "id": 1762861979705,

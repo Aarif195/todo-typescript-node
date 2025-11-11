@@ -15,7 +15,7 @@ import {
   deleteTask,
   likeTask,
   postTaskComment,
-  replyTaskComment
+  replyTaskComment, getTaskComments
 } from "./controllers/tasksController";
 
 const server = http.createServer((req, res) => {
@@ -41,10 +41,17 @@ const server = http.createServer((req, res) => {
     return createTask(req, res);
   }
 
+   // get comment
+    else if (url?.startsWith("/api/tasks/") && url.endsWith("/comments") && method === "GET") {
+        return getTaskComments(req, res)
+    }
+
   // GET TASK BY ID
   else if (url?.startsWith("/api/tasks/") && method === "GET") {
     return getTaskById(req, res);
   }
+
+  
 
   // GET TASKS
   else if (url && url.startsWith("/api/tasks") && method === "GET") {
@@ -86,6 +93,7 @@ const server = http.createServer((req, res) => {
         return replyTaskComment(req, res);
     }
 
+   
 
   // DELETE TASK
   else if (url?.startsWith("/api/tasks/") && method === "DELETE") {
@@ -102,6 +110,11 @@ const server = http.createServer((req, res) => {
   ) {
     return likeTask(req, res);
   }
+
+
+
+
+  
 });
 
 
