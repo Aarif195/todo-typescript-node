@@ -6,7 +6,7 @@ const PORT = process.env.PORT || 8080;
 
 import { register, login } from "./controllers/authController";
 
-import { createTask , getTasks, updateTask, toggleTaskCompletion,getTaskById} from "./controllers/tasksController";
+import { createTask , getTasks, updateTask, toggleTaskCompletion,getTaskById, deleteTask} from "./controllers/tasksController";
 
 const server = http.createServer((req, res) => {
   const url = req.url;
@@ -60,6 +60,11 @@ else if (url?.startsWith("/api/tasks/") && url.endsWith("/incomplete") && method
     return toggleTaskCompletion(req, res);
 }
 
+
+ // delete
+    else if (url?.startsWith("/api/tasks/") && method === "DELETE") {
+        return deleteTask(req, res);
+    }
 
 
 

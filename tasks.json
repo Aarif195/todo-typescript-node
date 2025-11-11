@@ -36,21 +36,7 @@
     "completed": false,
     "userId": 2,
     "createdAt": "2025-11-10T14:35:00.679Z",
-    "updatedAt": "2025-11-10T17:05:52.088Z"
-  },
-  {
-    "id": 4,
-    "title": "Finish TypeScript Todo API",
-    "description": "Write all CRUD endpoints",
-    "priority": "low",
-    "status": "pending",
-    "labels": [
-      "personal"
-    ],
-    "completed": true,
-    "userId": 2,
-    "createdAt": "2025-11-10T15:31:49.002Z",
-    "updatedAt": "2025-11-11T09:21:45.198Z"
+    "updatedAt": "2025-11-11T09:47:05.938Z"
   },
   {
     "id": 5,
@@ -65,5 +51,33 @@
     "userId": 2,
     "createdAt": "2025-11-10T16:46:44.268Z",
     "updatedAt": "2025-11-10T16:46:44.269Z"
+  },
+  {
+    "id": 7,
+    "title": "Finish TypeScript Todo API",
+    "description": "Write all CRUD endpoints",
+    "priority": "low",
+    "status": "pending",
+    "labels": [
+      "personal"
+    ],
+    "completed": false,
+    "userId": 2,
+    "createdAt": "2025-11-11T09:52:01.081Z",
+    "updatedAt": "2025-11-11T09:52:01.081Z"
+  },
+  {
+    "id": 8,
+    "title": "Finish TypeScript Todo API",
+    "description": "Write all CRUD endpoints",
+    "priority": "low",
+    "status": "pending",
+    "labels": [
+      "personal"
+    ],
+    "completed": false,
+    "userId": 2,
+    "createdAt": "2025-11-11T09:52:12.094Z",
+    "updatedAt": "2025-11-11T09:52:12.095Z"
   }
 ]

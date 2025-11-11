@@ -350,7 +350,7 @@ export function updateTask(req: IncomingMessage, res: ServerResponse): void {
       );
     }
 
-     if (priority !== undefined && priority.trim() === "") {
+    if (priority !== undefined && priority.trim() === "") {
       res.writeHead(400, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ message: "Priority cannot be empty" }));
     }
@@ -371,7 +371,6 @@ export function updateTask(req: IncomingMessage, res: ServerResponse): void {
         })
       );
     }
-
 
     if (priority && !allowedPriorities.includes(priority.toLowerCase())) {
       res.writeHead(400, { "Content-Type": "application/json" });
@@ -398,7 +397,7 @@ export function updateTask(req: IncomingMessage, res: ServerResponse): void {
       }
     }
 
-    // RETURNING UPDATE TASK 
+    // RETURNING UPDATE TASK
     const taskToUpdate = tasks[index];
 
     const updatedTask: Todo = {
@@ -426,4 +425,47 @@ export function updateTask(req: IncomingMessage, res: ServerResponse): void {
       JSON.stringify({ message: "Task updated successfully", updatedTask })
     );
   });
+}
+
+// DELETE TASK
+export function deleteTask(req: IncomingMessage, res: ServerResponse): void {
+  const user = authenticate(req);
+  if (!user) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Unauthorized" }));
+    return;
+  }
+
+  const urlParts = req.url?.split("/") || [];
+  const taskId = parseInt(urlParts.pop() || "0");
+
+  const data = fs.readFileSync(file, "utf8");
+  let tasks: Todo[] = JSON.parse(data) as Todo[];
+
+  //  FIND TASK
+  const index = tasks.findIndex((t) => t.id === taskId);
+
+  if (index === -1) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Task not found" }));
+    return;
+  }
+
+  //  OWNERSHIP CHECK (Using userId instead of username)
+  if (tasks[index].userId !== user.id) {
+    res.writeHead(403, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        message: "Forbidden: You can only delete your own tasks",
+      })
+    );
+  }
+
+  //  DELETE AND SAVE
+  const [deletedTask] = tasks.splice(index, 1);
+  fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
+
+  // 
+  res.writeHead(204, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ message: "Task deleted", deletedTask }));
 }
