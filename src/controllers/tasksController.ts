@@ -359,7 +359,18 @@ export function updateTask(req: IncomingMessage, res: ServerResponse): void {
       );
     }
 
-  
+    if (priority !== undefined && priority.trim() === "") {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Priority cannot be empty" }));
+    }
+    if (status !== undefined && status.trim() === "") {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Status cannot be empty" }));
+    }
+    if (Array.isArray(labels) && labels.length === 0) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Labels cannot be empty" }));
+    }
 
     if (priority && !allowedPriorities.includes(priority.toLowerCase())) {
       res.writeHead(400, { "Content-Type": "application/json" });
