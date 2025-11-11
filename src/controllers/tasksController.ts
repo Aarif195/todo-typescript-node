@@ -824,3 +824,85 @@ if (comment.isLiked) {
  res.writeHead(200, { "Content-Type": "application/json" });
  res.end(JSON.stringify({ message, comment }));
 }
+
+
+// LIKE/UNLIKE A REPLY 
+export function likeReply(req: IncomingMessage, res: ServerResponse) {
+
+ const user = authenticate(req);
+ if (!user) {
+ res.writeHead(401, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Unauthorized" }));
+ }
+
+
+ // T_ID/comments/C_ID/replies/R_ID/like
+ const urlParts = req.url?.split("/") || [];
+ const taskId = parseInt(urlParts[3] || '0');
+ const commentId = parseInt(urlParts[5] || '0');
+ // Index 7 for the reply ID
+ const replyId = parseInt(urlParts[7] || '0'); 
+
+ const data = fs.readFileSync(file, "utf8");
+ const tasks = JSON.parse(data) as Todo[];
+    
+ //  Find Task
+ const taskIndex = tasks.findIndex(t => t.id === taskId);
+ if (taskIndex === -1) {
+ res.writeHead(404, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Task not found" }));
+ }
+let task = tasks[taskIndex];
+    
+ // Ensure comments array exists and is an array
+if (!Array.isArray(task.comments)) {
+ res.writeHead(404, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Task comments structure is invalid" }));
+}
+
+ //  Find Comment
+ const comment = (task.comments as Comment[]).find(c => c.id === commentId);
+ if (!comment) {
+res.writeHead(404, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Comment not found" }));
+}
+
+ //  Find Reply
+    // Ensure replies array exists and is an array
+ if (!Array.isArray(comment.replies)) {
+ res.writeHead(404, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Comment replies structure is invalid" }));
+ }
+    
+ // Use 'as any' temporarily if Reply type isn't updated with isLiked
+ const reply = (comment.replies as any).find((r: Reply) => r.id === replyId);
+ if (!reply) {
+ res.writeHead(404, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Reply not found" }));
+ }
+
+ // STRICT OWNERSHIP CHECK
+ if (reply.userId !== user.id) { 
+ res.writeHead(403, { "Content-Type": "application/json" });
+ return res.end(JSON.stringify({ message: "Forbidden: You are only allowed to like your own reply" }));
+}
+
+
+ //  Initialize and Toggle Like State 
+if (typeof reply.isLiked === "undefined") reply.isLiked = false;
+
+ let message;
+if (reply.isLiked) {
+  reply.isLiked = false;
+  message = "Reply unliked!";
+ } else {
+  reply.isLiked = true;
+  message = "Reply liked!";
+}
+
+ // Save and Respond
+ tasks[taskIndex] = task;
+ fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
+res.writeHead(200, { "Content-Type": "application/json" });
+ res.end(JSON.stringify({ message, reply }));
+}

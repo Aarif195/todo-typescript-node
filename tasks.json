@@ -296,7 +296,16 @@
         "username": "Ayoolamhi",
         "text": "nooooo",
         "date": "2025-11-11T13:42:34.472Z",
-        "replies": []
+        "replies": [
+          {
+            "id": 1762869401362,
+            "userId": 2,
+            "username": "Ayoolamhi",
+            "text": "loolll",
+            "date": "2025-11-11T13:56:41.362Z",
+            "isLiked": false
+          }
+        ]
       },
       {
         "id": 1762868558566,
@@ -304,7 +313,15 @@
         "username": "Ayoolamhi",
         "text": "nooooo",
         "date": "2025-11-11T13:42:38.566Z",
-        "replies": [],
+        "replies": [
+          {
+            "id": 1762869414617,
+            "userId": 2,
+            "username": "Ayoolamhi",
+            "text": "loolll",
+            "date": "2025-11-11T13:56:54.617Z"
+          }
+        ],
         "isLiked": false
       }
     ]

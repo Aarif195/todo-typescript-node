@@ -19,6 +19,7 @@ import {
   getTaskComments,
   getMyTasks,
   likeComment,
+  likeReply
 } from "./controllers/tasksController";
 
 const server = http.createServer((req, res) => {
@@ -42,7 +43,18 @@ const server = http.createServer((req, res) => {
   }
 
  
- // like/unlike a comment
+// LIKE/UNLIKE A REPLY
+    else if (
+        url?.startsWith("/api/tasks/") &&
+        url.includes("/comments/") &&
+        url.includes("/replies/") &&
+        url.endsWith("/like") &&
+        req.method === "POST"
+    ) {
+        return likeReply(req, res);
+    }
+
+// LIKE/UNLIKE A COMMENT 
   if (
     url?.startsWith("/api/tasks/") &&
     url.includes("/comments/") &&
@@ -51,6 +63,18 @@ const server = http.createServer((req, res) => {
   ) {
     return likeComment(req, res);
   }
+
+
+ // Edit reply
+    // else if (
+    //     url?.startsWith("/api/tasks/") &&
+    //     url.includes("/comments/") &&
+    //     url.includes("/replies/") &&
+    //     req.method === "PUT"
+    // ) {
+    //     return editCommentOrReply(req, res);
+    // }
+
 
   // CREATE TASK
   else if (url === "/api/tasks" && method === "POST") {
