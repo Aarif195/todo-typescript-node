@@ -14,7 +14,8 @@ import {
   getTaskById,
   deleteTask,
   likeTask,
-  postTaskComment
+  postTaskComment,
+  replyTaskComment
 } from "./controllers/tasksController";
 
 const server = http.createServer((req, res) => {
@@ -79,11 +80,20 @@ const server = http.createServer((req, res) => {
         return postTaskComment(req, res);
     }
 
+
+     // reply to a comment
+    else if (url?.startsWith("/api/tasks/") && url.includes("/comment/") && url.endsWith("/reply") && method === "POST") {
+        return replyTaskComment(req, res);
+    }
+
+
   // DELETE TASK
   else if (url?.startsWith("/api/tasks/") && method === "DELETE") {
     return deleteTask(req, res);
   }
 
+
+  
   // LIKE TASK
   else if (
     url?.startsWith("/api/tasks/") &&

@@ -1,8 +1,8 @@
 import { IncomingMessage, ServerResponse } from "http";
 import fs from "fs";
 import path from "path";
-import { Todo , Comment, Reply} from "../types/todo";
-import { User } from '../types/user';
+import { Todo, Comment, Reply } from "../types/todo";
+import { User } from "../types/user";
 import { authenticate } from "./authController";
 
 const file = path.join(__dirname, "../../tasks.json");
@@ -466,140 +466,229 @@ export function deleteTask(req: IncomingMessage, res: ServerResponse): void {
   const [deletedTask] = tasks.splice(index, 1);
   fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
 
-  // 
+  //
   res.writeHead(204, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ message: "Task deleted", deletedTask }));
 }
 
-
 // LIKE TASK
 export function likeTask(req: IncomingMessage, res: ServerResponse): void {
- const user: User | null = authenticate(req);
- if (!user) {
-res.writeHead(401, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ message: "Unauthorized" }));
- return
+  const user: User | null = authenticate(req);
+  if (!user) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Unauthorized" }));
+    return;
+  }
 
+  // Extract taskId using the standard pop() method
+  const urlParts = req.url?.split("/") || [];
+  const taskIdStr = urlParts[urlParts.length - 2];
+  const taskId = parseInt(taskIdStr);
+
+  const data = fs.readFileSync(file, "utf8");
+  let tasks: Todo[] = JSON.parse(data) as Todo[];
+
+  const index = tasks.findIndex((t) => t.id === taskId);
+  if (index === -1) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Task not found" }));
+    return;
+  }
+
+  let task = tasks[index];
+  let message: string;
+
+  if (task.userId !== user.id) {
+    res.writeHead(403, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        message: "Forbidden: You can only like/unlike your own task.",
+      })
+    );
+    return;
+  }
+
+  if (typeof task.isLiked === "undefined") {
+    task.isLiked = false;
+  }
+  if (typeof task.likesCount !== "number") {
+    task.likesCount = 0;
+  }
+
+  //  Toggle like state
+  if (task.isLiked) {
+    task.likesCount = Math.max(task.likesCount - 1, 0);
+    task.isLiked = false;
+    message = "Task unliked!";
+  } else {
+    task.likesCount += 1;
+    task.isLiked = true;
+    message = "Task liked!";
+  }
+
+  //  Save updated task list
+  tasks[index] = task;
+  fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
+
+  //  Response
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ message: message, task: task }));
 }
 
- // Extract taskId using the standard pop() method
-const urlParts = req.url?.split("/") || [];
-const taskIdStr = urlParts[urlParts.length - 2];  
-const taskId = parseInt(taskIdStr);
-
- const data = fs.readFileSync(file, "utf8");
- let tasks: Todo[] = JSON.parse(data) as Todo[];
-
- const index = tasks.findIndex((t) => t.id === taskId);
- if (index === -1) {
- res.writeHead(404, { "Content-Type": "application/json" });
- res.end(JSON.stringify({ message: "Task not found" }));
-  return
-}
-
- let task = tasks[index];
- let message: string;
-
-if (task.userId !== user.id) {
-res.writeHead(403, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ message: "Forbidden: You can only like/unlike your own task." }));
-  return
-}
-
- 
-if (typeof task.isLiked === "undefined") {
- task.isLiked = false;
- }
- if (typeof task.likesCount !== "number") {
-task.likesCount = 0;
- }
-
- //  Toggle like state
- if (task.isLiked) {
- task.likesCount = Math.max(task.likesCount - 1, 0);
- task.isLiked = false;
- message = "Task unliked!";
- } else {
- task.likesCount += 1;
- task.isLiked = true;
- message = "Task liked!";
- }
-
- //  Save updated task list
- tasks[index] = task;
- fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
-
- //  Response
- res.writeHead(200, { "Content-Type": "application/json" });
- res.end(JSON.stringify({ message: message, task: task }));
-}
-
-// POST COMMENT /ADD 
+// POST COMMENT /ADD
 export function postTaskComment(req: IncomingMessage, res: ServerResponse) {
+  const user = authenticate(req);
+  if (!user) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ message: "Unauthorized" }));
+  }
 
-const user = authenticate(req);
- if (!user) {
- res.writeHead(401, { "Content-Type": "application/json" });
- return res.end(JSON.stringify({ message: "Unauthorized" }));
- }
+  // Extract ID using the new agreed upon method
+  const urlParts = req.url?.split("/") || [];
+  const taskIdStr = urlParts[urlParts.length - 2];
+  const taskId = parseInt(taskIdStr);
 
- // Extract ID using the new agreed upon method
- const urlParts = req.url?.split("/") || [];
- const taskIdStr = urlParts[urlParts.length - 2]; 
- const taskId = parseInt(taskIdStr);
+  let body = "";
 
- let body = "";
+  req.on("data", (chunk) => {
+    body += chunk.toString();
+  });
 
- req.on("data", chunk => {
- body += chunk.toString();
-    });
+  req.on("end", () => {
+    let parsedBody: { text?: string };
+    try {
+      parsedBody = JSON.parse(body);
+    } catch {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Invalid JSON body" }));
+    }
+    const { text } = parsedBody;
 
- req.on("end", () => {
- let parsedBody: { text?: string };
- try {
-    parsedBody = JSON.parse(body);
- } catch {
-     res.writeHead(400, { "Content-Type": "application/json" });
- return res.end(JSON.stringify({ message: "Invalid JSON body" }));
-        }
-        const { text } = parsedBody;
-        
-        if (!text || text.trim() === "") {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            return res.end(JSON.stringify({ message: "Comment text is required" }));
-        }
+    if (!text || text.trim() === "") {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Comment text is required" }));
+    }
 
-        const data = JSON.parse(fs.readFileSync(file, "utf8"));
-        // Cast data to Todo[] and article to Todo | undefined
- const tasks: Todo[] = data as Todo[];
- const taskIndex = tasks.findIndex(t => t.id === taskId);
-        
-        if (taskIndex === -1) {
-     res.writeHead(404, { "Content-Type": "application/json" });
-     return res.end(JSON.stringify({ message: "Task not found" }));
-        }
-        
-        let task = tasks[taskIndex];
+    const data = JSON.parse(fs.readFileSync(file, "utf8")); // Cast data to Todo[] and article to Todo | undefined
+    const tasks: Todo[] = data as Todo[];
+    const taskIndex = tasks.findIndex((t) => t.id === taskId);
 
- // Ensure task.comments exists and is an array (Type safety + Initialization)
-        if (!Array.isArray(task.comments)) {
-     task.comments = [];
-        }
+    if (taskIndex === -1) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Task not found" }));
+    }
 
-        // Create the new Comment object (Type-safe using explicit properties)
-        const newComment: Comment = {
-     id: Date.now(),
-     userId: user.id, // Use ID
-     username: user.username, // Include username for display
-     text: text.trim(),
-     date: new Date().toISOString(),
-     replies: []
- };
+    let task = tasks[taskIndex];
 
-        task.comments.push(newComment);
-        fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
+    // Ensure task.comments exists and is an array (Type safety + Initialization)
+    if (!Array.isArray(task.comments)) {
+      task.comments = [];
+    } // Create the new Comment object (Type-safe using explicit properties)
 
-        res.writeHead(201, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(newComment));
-    });
+    const newComment: Comment = {
+      id: Date.now(),
+      userId: user.id, // Use ID
+      username: user.username, // Include username for display
+      text: text.trim(),
+      date: new Date().toISOString(),
+      replies: [],
+    };
+
+    task.comments.push(newComment);
+    fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
+
+    res.writeHead(201, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(newComment));
+  });
+}
+
+// REPLY COMMENT (PURE FUNCTION)
+export function replyTaskComment(req: IncomingMessage, res: ServerResponse) {
+  const user = authenticate(req);
+  if (!user) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ message: "Unauthorized" }));
+  }
+
+  const parts = req.url?.split("/") || [];
+
+  const taskId = parseInt(parts[3] || "0");
+  const commentId = parseInt(parts[5] || "0");
+
+  let body = "";
+
+  req.on("data", (chunk) => {
+    body += chunk.toString();
+  });
+
+  req.on("end", () => {
+    let parsedBody;
+    try {
+      parsedBody = JSON.parse(body);
+    } catch {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Invalid JSON body" }));
+    }
+    const { text } = parsedBody;
+
+    if (!text || text.trim() === "") {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Reply text is required" }));
+    }
+
+    const data = JSON.parse(fs.readFileSync(file, "utf8"));
+    const tasks: Todo[] = data as Todo[];
+
+    //  Find the Task
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Task not found" }));
+    }
+
+    // Ensure comments array exists for type safety
+    if (!Array.isArray(task.comments)) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({ message: "Task comments structure is invalid" })
+      );
+    }
+
+    //  Find the Comment
+    const comment = (task.comments as Comment[]).find(
+      (c) => c.id === commentId
+    );
+    if (!comment) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "Comment not found" }));
+    }
+
+    // Only the comment author can reply.
+    if (comment.userId !== user.id) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({
+          message: "Forbidden: You can only reply to your own comment.",
+        })
+      );
+    }
+
+    //  Create the Reply object
+    const newReply: Reply = {
+      id: Date.now(),
+      userId: user.id,
+      username: user.username,
+      text: text.trim(),
+      date: new Date().toISOString(),
+    };
+
+    //  Add the Reply to the Comment
+    comment.replies = comment.replies || [];
+    comment.replies.push(newReply);
+
+    fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
+
+    res.writeHead(201, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(newReply));
+  });
 }
