@@ -350,16 +350,7 @@ export function updateTask(req: IncomingMessage, res: ServerResponse): void {
       );
     }
 
-    if (status && !allowedStatuses.includes(status.toLowerCase())) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(
-        JSON.stringify({
-          message: `Invalid status. Allowed: ${allowedStatuses.join(", ")}`,
-        })
-      );
-    }
-
-    if (priority !== undefined && priority.trim() === "") {
+     if (priority !== undefined && priority.trim() === "") {
       res.writeHead(400, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ message: "Priority cannot be empty" }));
     }
@@ -372,11 +363,21 @@ export function updateTask(req: IncomingMessage, res: ServerResponse): void {
       return res.end(JSON.stringify({ message: "Labels cannot be empty" }));
     }
 
+    if (status && !allowedStatuses.includes(status.toLowerCase())) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({
+          message: `Invalid status.`,
+        })
+      );
+    }
+
+
     if (priority && !allowedPriorities.includes(priority.toLowerCase())) {
       res.writeHead(400, { "Content-Type": "application/json" });
       return res.end(
         JSON.stringify({
-          message: `Invalid priority. Allowed: ${allowedPriorities.join(", ")}`,
+          message: `Invalid priority.`,
         })
       );
     }
