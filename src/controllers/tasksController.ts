@@ -538,7 +538,7 @@ export function likeTask(req: IncomingMessage, res: ServerResponse): void {
   res.end(JSON.stringify({ message: message, task: task }));
 }
 
-// POST COMMENT /ADD
+// POST COMMENT/ADD
 export function postTaskComment(req: IncomingMessage, res: ServerResponse) {
   const user = authenticate(req);
   if (!user) {
@@ -605,7 +605,7 @@ export function postTaskComment(req: IncomingMessage, res: ServerResponse) {
   });
 }
 
-// REPLY COMMENT (PURE FUNCTION)
+// REPLY COMMENT 
 export function replyTaskComment(req: IncomingMessage, res: ServerResponse) {
   const user = authenticate(req);
   if (!user) {
@@ -696,8 +696,7 @@ export function replyTaskComment(req: IncomingMessage, res: ServerResponse) {
   });
 }
 
-
-// GET TASK COMMENTS (PURE FUNCTION)
+// GET TASK COMMENTS
 export function getTaskComments(req: IncomingMessage, res: ServerResponse) {
 
  // 1. AUTHENTICATION: Ensure the user is logged in
@@ -729,4 +728,34 @@ const comments = task.comments || [];
  // 5. RESPONSE
  res.writeHead(200, { "Content-Type": "application/json" });
  res.end(JSON.stringify(comments));
+}
+
+
+// GET TASKS CREATED BY THE LOGGED-IN USER
+export function getMyTasks(req: IncomingMessage, res: ServerResponse) {
+    
+    //  AUTHENTICATION
+    const user = authenticate(req);
+    if (!user) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ message: "Unauthorized" }));
+    }
+
+    //  READ DATA AND PARSE
+    const data = fs.readFileSync(file, "utf8");
+    const tasks = JSON.parse(data) as Todo[];
+
+    // 3. FILTER AND SORT
+    const userTasks = tasks
+        // FIX: Filter by userId (number) instead of username (string)
+        .filter(task => task.userId === user.id)
+        
+       
+        .sort((a, b) => {
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+
+    // RESPONSE
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(userTasks));
 }

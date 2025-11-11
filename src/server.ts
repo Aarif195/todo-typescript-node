@@ -15,7 +15,7 @@ import {
   deleteTask,
   likeTask,
   postTaskComment,
-  replyTaskComment, getTaskComments
+  replyTaskComment, getTaskComments, getMyTasks
 } from "./controllers/tasksController";
 
 const server = http.createServer((req, res) => {
@@ -112,7 +112,9 @@ const server = http.createServer((req, res) => {
   }
 
 
-
+ else if (url === "/api/user/my-tasks" && method === "GET") {
+        getMyTasks(req, res);
+    }
 
   
 });

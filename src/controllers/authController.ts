@@ -85,7 +85,6 @@ export function register(req: IncomingMessage, res: ServerResponse): void {
   });
 }
 
-
 // LOGIN USER
 export function login(req: IncomingMessage, res: ServerResponse): void {
   let body = "";
