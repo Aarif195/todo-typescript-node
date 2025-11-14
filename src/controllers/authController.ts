@@ -1,11 +1,15 @@
-// src/controllers/authController.ts
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { User } from "../types/user";
 import { IncomingMessage, ServerResponse } from "http";
 
-const file = path.join(__dirname, "../../users.json");
+const file = path.join(__dirname, "../users.json");
+console.log("Current file path:", file);
+
+if (!fs.existsSync(file)) {
+    fs.writeFileSync(file, "[]");
+}
 
 // Read and write helpers
 function readUsers(): User[] {
@@ -20,7 +24,7 @@ function writeUsers(users: User[]): void {
 }
 
 // Password hashing
-function hashPassword(password: string): string {
+export function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");
 }
 

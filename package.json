@@ -1,15 +1,27 @@
 {
   "name": "todo-typescript-node",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
     "start": "ts-node src/server.ts",
-    "dev": "nodemon --exec ts-node src/server.ts"
+    "dev": "tsc && node dist/server.js",
+    "watch": "nodemon src/server.ts"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "typescript",
+    "node",
+    "api",
+    "todo",
+    "crud",
+    "http",
+    "rest",
+    "backend",
+    "pagination",
+    "auth"
+  ],
+  "author": "Aarif",
   "license": "ISC",
-  "description": "",
+  "description": "A feature-rich To-Do List API built with Node.js and TypeScript, supporting CRUD, nested comments, replies, likes, pagination, and query filtering.",
   "devDependencies": {
     "@types/node": "^24.10.0",
     "nodemon": "^3.1.10",
@@ -17,6 +29,8 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "formidable": "^3.5.4"
+    "dotenv": "^17.2.3",
+    "formidable": "^3.5.4",
+    "mongodb": "^7.0.0"
   }
 }

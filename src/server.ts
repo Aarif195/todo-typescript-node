@@ -1,11 +1,8 @@
 import http from "http";
+import { connectToMongo } from "./db/mongo";
 
-import { Todo } from "./types/todo";
-
-const PORT = process.env.PORT || 8080;
 
 import { register, login } from "./controllers/authController";
-
 import {
   createTask,
   getTasks,
@@ -19,42 +16,41 @@ import {
   getTaskComments,
   getMyTasks,
   likeComment,
-  likeReply
+  likeReply,
+  editCommentOrReply,
+  deleteCommentOrReply,
 } from "./controllers/tasksController";
+
+const PORT = process.env.PORT || 8080;
+
 
 const server = http.createServer((req, res) => {
   const url = req.url;
   const method = req.method;
 
-  if (url === "/" && method === "GET") {
-    res.end(JSON.stringify({ message: "Hello TypeScript Node" }));
-  }
 
   // Register
   if (url === "/api/register" && method === "POST") {
     return register(req, res);
   }
 
-
-  
   // Login
   if (url === "/api/login" && method === "POST") {
     return login(req, res);
   }
 
- 
-// LIKE/UNLIKE A REPLY
-    else if (
-        url?.startsWith("/api/tasks/") &&
-        url.includes("/comments/") &&
-        url.includes("/replies/") &&
-        url.endsWith("/like") &&
-        req.method === "POST"
-    ) {
-        return likeReply(req, res);
-    }
+  // LIKE/UNLIKE A REPLY
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.includes("/comments/") &&
+    url.includes("/replies/") &&
+    url.endsWith("/like") &&
+    req.method === "POST"
+  ) {
+    return likeReply(req, res);
+  }
 
-// LIKE/UNLIKE A COMMENT 
+  // LIKE/UNLIKE A COMMENT
   if (
     url?.startsWith("/api/tasks/") &&
     url.includes("/comments/") &&
@@ -64,23 +60,50 @@ const server = http.createServer((req, res) => {
     return likeComment(req, res);
   }
 
+  // 1. EDIT COMMENT
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.includes("/comments/") &&
+    !url.includes("/replies") &&
+    req.method === "PATCH"
+  ) {
+    return editCommentOrReply(req, res);
+  }
 
- // Edit reply
-    // else if (
-    //     url?.startsWith("/api/tasks/") &&
-    //     url.includes("/comments/") &&
-    //     url.includes("/replies/") &&
-    //     req.method === "PUT"
-    // ) {
-    //     return editCommentOrReply(req, res);
-    // }
+  // 2. EDIT REPLY
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.includes("/comments/") &&
+    url.includes("/replies/") &&
+    req.method === "PATCH"
+  ) {
+    return editCommentOrReply(req, res);
+  }
 
+  // Delete comment
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.includes("/comments/") &&
+    !url.includes("/replies") &&
+    req.method === "DELETE"
+  ) {
+    return deleteCommentOrReply(req, res);
+  }
+
+  // Delete reply
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.includes("/comments/") &&
+    url.includes("/replies/") &&
+    req.method === "DELETE"
+  ) {
+    return deleteCommentOrReply(req, res);
+  }
 
   // CREATE TASK
   else if (url === "/api/tasks" && method === "POST") {
     return createTask(req, res);
   }
-
 
   // get comment
   else if (
@@ -158,11 +181,11 @@ const server = http.createServer((req, res) => {
   } else if (url === "/api/user/my-tasks" && method === "GET") {
     getMyTasks(req, res);
   }
-
-
-
-  
 });
+
+
+connectToMongo();
+
 
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT} `);

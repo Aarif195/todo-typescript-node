@@ -1,14 +1,2 @@
 [
-  {
-    "id": "1",
-    "title": "Finish project",
-    "completed": false,
-    "tags": ["work", "urgent"]
-  },
-  {
-    "id": "2",
-    "title": "Buy groceries",
-    "completed": true,
-    "tags": ["personal"]
-  }
 ]
