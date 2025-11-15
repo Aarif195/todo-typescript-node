@@ -24,13 +24,15 @@ interface User {
   password: string;
 }
 
-
 export function getTasksCollection() {
   return getDb().collection("tasks");
 }
 
 // CREATE TASK
-export const createTask = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+export const createTask = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
   try {
     const user = await authenticate(req);
     if (!user) {
@@ -40,21 +42,36 @@ export const createTask = async (req: IncomingMessage, res: ServerResponse): Pro
     }
 
     let body = "";
-    req.on("data", (chunk) => { body += chunk.toString(); });
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
 
     req.on("end", async () => {
-      const { title, description, priority, status, labels, completed }: Partial<Todo> = JSON.parse(body);
+      const {
+        title,
+        description,
+        priority,
+        status,
+        labels,
+        completed,
+      }: Partial<Todo> = JSON.parse(body);
 
       // VALIDATIONS
       if (!title?.trim()) return sendError(res, "Title is required.");
-      if (!description?.trim()) return sendError(res, "Description is required.");
+      if (!description?.trim())
+        return sendError(res, "Description is required.");
       if (!priority?.trim()) return sendError(res, "Priority is required.");
-      if (!allowedPriorities.includes(priority)) return sendError(res, "Invalid priority provided.");
+      if (!allowedPriorities.includes(priority))
+        return sendError(res, "Invalid priority provided.");
       if (!status?.trim()) return sendError(res, "Status is required.");
-      if (!allowedStatuses.includes(status)) return sendError(res, "Invalid status provided.");
-      if (!labels || !Array.isArray(labels) || labels.length === 0) return sendError(res, "At least one label is required.");
-      if (!labels.every((label) => allowedLabels.includes(label))) return sendError(res, "Invalid label(s) provided.");
-      if (typeof completed !== "boolean") return sendError(res, "Completed must be boolean");
+      if (!allowedStatuses.includes(status))
+        return sendError(res, "Invalid status provided.");
+      if (!labels || !Array.isArray(labels) || labels.length === 0)
+        return sendError(res, "At least one label is required.");
+      if (!labels.every((label) => allowedLabels.includes(label)))
+        return sendError(res, "Invalid label(s) provided.");
+      if (typeof completed !== "boolean")
+        return sendError(res, "Completed must be boolean");
 
       const tasksCol = getTasksCollection(); // MongoDB collection
 
@@ -73,26 +90,34 @@ export const createTask = async (req: IncomingMessage, res: ServerResponse): Pro
       const result = await tasksCol.insertOne(newTask);
 
       res.writeHead(201, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ message: "Task created successfully", task: { ...newTask, _id: result.insertedId } }));
+      res.end(
+        JSON.stringify({
+          message: "Task created successfully",
+          task: { ...newTask, _id: result.insertedId },
+        })
+      );
     });
-
   } catch (err) {
     console.error(err);
     sendError(res, "Server error");
   }
 };
 
-  // GET TASKS
-export const getTasks = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+// GET TASKS
+export const getTasks = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
   try {
     const tasksCol = getTasksCollection(); // MongoDB collection for Todo
 
     // Fetch all tasks
-    const tasksArray = await tasksCol.find({}).toArray() as Todo[];
+    const tasksArray = (await tasksCol.find({}).toArray()) as Todo[];
 
     // Sort newest first
     tasksArray.sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
     // Parse query parameters for filtering & pagination
@@ -109,25 +134,27 @@ export const getTasks = async (req: IncomingMessage, res: ServerResponse): Promi
 
       if (key === "search") {
         filteredTasks = filteredTasks.filter(
-          task =>
+          (task) =>
             task.title.toLowerCase().includes(value) ||
             task.description.toLowerCase().includes(value) ||
             (Array.isArray(task.labels) &&
-              task.labels.some(label => label.toLowerCase().includes(value)))
+              task.labels.some((label) => label.toLowerCase().includes(value)))
         );
       } else if (key === "labels") {
         filteredTasks = filteredTasks.filter(
-          task =>
+          (task) =>
             Array.isArray(task.labels) &&
-            task.labels.map(label => label.toLowerCase()).includes(value)
+            task.labels.map((label) => label.toLowerCase()).includes(value)
         );
       } else if (key === "status" && allowedStatuses.includes(value)) {
-        filteredTasks = filteredTasks.filter(task => task.status === value);
+        filteredTasks = filteredTasks.filter((task) => task.status === value);
       } else if (key === "priority" && allowedPriorities.includes(value)) {
-        filteredTasks = filteredTasks.filter(task => task.priority === value);
+        filteredTasks = filteredTasks.filter((task) => task.priority === value);
       } else if (key === "completed") {
         const isCompleted = value === "true";
-        filteredTasks = filteredTasks.filter(task => task.completed === isCompleted);
+        filteredTasks = filteredTasks.filter(
+          (task) => task.completed === isCompleted
+        );
       }
     }
 
@@ -155,3 +182,34 @@ export const getTasks = async (req: IncomingMessage, res: ServerResponse): Promi
   }
 };
 
+// GET TASK BY ID
+export const getTaskById = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const urlParts = req.url?.split("/") || [];
+    const idStr = urlParts[urlParts.length - 1];
+
+    if (!ObjectId.isValid(idStr)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Invalid ID" }));
+    }
+
+    const tasksCol = getTasksCollection();
+    const task = await tasksCol.findOne({ _id: new ObjectId(idStr) });
+
+    if (!task) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Task not found" }));
+      
+    }
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(task));
+  } catch (err) {
+    console.error(err);
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Server error" }));
+  }
+};
