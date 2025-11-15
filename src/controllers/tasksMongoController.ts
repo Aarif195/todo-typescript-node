@@ -182,6 +182,79 @@ export const getTasks = async (
   }
 };
 
+// Mark task as completed or incomplete
+export const toggleTaskCompletion = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Unauthorized" }));
+      return;
+    }
+
+    const urlParts = req.url?.split("/") || [];
+    const taskIdStr = urlParts[urlParts.length - 2];
+    const action = urlParts[urlParts.length - 1];
+
+    const { ObjectId } = await import("mongodb");
+    if (!ObjectId.isValid(taskIdStr)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Invalid task ID" }));
+      return;
+    }
+    const taskId = new ObjectId(taskIdStr);
+
+    if (action !== "complete" && action !== "incomplete") {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Invalid action" }));
+      return;
+    }
+
+    const tasksCol = getTasksCollection();
+
+    const task = await tasksCol.findOne({ _id: taskId, userId: user._id });
+    if (!task) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Task not found" }));
+      return;
+    }
+
+    const updatedTask = await tasksCol.findOneAndUpdate(
+      { _id: taskId },
+      {
+        $set: {
+          completed: action === "complete",
+          updatedAt: new Date().toISOString(),
+        },
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!updatedTask || !updatedTask.value) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({ message: "Task not found or failed to update" })
+      );
+      return;
+    }
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        message: `Task marked as ${action}`,
+        task: updatedTask.value,
+      })
+    );
+  } catch (err) {
+    console.error(err);
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Server error" }));
+  }
+};
+
 // GET TASK BY ID
 export const getTaskById = async (
   req: IncomingMessage,
@@ -202,7 +275,6 @@ export const getTaskById = async (
     if (!task) {
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ message: "Task not found" }));
-      
     }
 
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -215,23 +287,30 @@ export const getTaskById = async (
 };
 
 // UPDATED
-export async function updateTask(req: IncomingMessage, res: ServerResponse): Promise<void> {
+export async function updateTask(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
   try {
     const user = await authenticate(req);
     if (!user) {
       res.writeHead(401, { "Content-Type": "application/json" });
-       res.end(JSON.stringify({ message: "Unauthorized" }));
-       return
+      res.end(JSON.stringify({ message: "Unauthorized" }));
+      return;
     }
 
     const urlParts = req.url?.split("/") || [];
     const taskId = urlParts[urlParts.length - 1];
 
     let body = "";
-    req.on("data", chunk => { body += chunk.toString(); });
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
 
     req.on("end", async () => {
-      let updatedData: Partial<Pick<Todo, "title" | "description" | "status" | "priority" | "labels">>;
+      let updatedData: Partial<
+        Pick<Todo, "title" | "description" | "status" | "priority" | "labels">
+      >;
       try {
         updatedData = JSON.parse(body);
       } catch {
@@ -249,33 +328,55 @@ export async function updateTask(req: IncomingMessage, res: ServerResponse): Pro
 
       if (!task.userId.equals(user._id)) {
         res.writeHead(403, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ message: "Forbidden: You can only update your own tasks" }));
+        return res.end(
+          JSON.stringify({
+            message: "Forbidden: You can only update your own tasks",
+          })
+        );
       }
 
       // VALIDATIONS
       const { title, description, status, priority, labels } = updatedData;
-      if (title !== undefined && title.trim() === "") return sendError(res, "Title cannot be empty");
-      if (description !== undefined && description.trim() === "") return sendError(res, "Description cannot be empty");
-      if (status && !allowedStatuses.includes(status.toLowerCase())) return sendError(res, "Invalid status");
-      if (priority && !allowedPriorities.includes(priority.toLowerCase())) return sendError(res, "Invalid priority");
-      if (labels && (!Array.isArray(labels) || labels.some(l => !allowedLabels.includes(l.toLowerCase()))))
+      if (title !== undefined && title.trim() === "")
+        return sendError(res, "Title cannot be empty");
+      if (description !== undefined && description.trim() === "")
+        return sendError(res, "Description cannot be empty");
+      if (status && !allowedStatuses.includes(status.toLowerCase()))
+        return sendError(res, "Invalid status");
+      if (priority && !allowedPriorities.includes(priority.toLowerCase()))
+        return sendError(res, "Invalid priority");
+      if (
+        labels &&
+        (!Array.isArray(labels) ||
+          labels.some((l) => !allowedLabels.includes(l.toLowerCase())))
+      )
         return sendError(res, "Invalid labels");
 
       const updatePayload: Partial<Todo> = {
         title: title !== undefined ? title.trim() : task.title,
-        description: description !== undefined ? description.trim() : task.description,
+        description:
+          description !== undefined ? description.trim() : task.description,
         status: status ? (status.toLowerCase() as Todo["status"]) : task.status,
-        priority: priority ? (priority.toLowerCase() as Todo["priority"]) : task.priority,
-        labels: labels ? labels.map(l => l.toLowerCase()) : task.labels,
+        priority: priority
+          ? (priority.toLowerCase() as Todo["priority"])
+          : task.priority,
+        labels: labels ? labels.map((l) => l.toLowerCase()) : task.labels,
         updatedAt: new Date().toISOString(),
       };
 
-      await tasksCol.updateOne({ _id: new ObjectId(taskId) }, { $set: updatePayload });
+      await tasksCol.updateOne(
+        { _id: new ObjectId(taskId) },
+        { $set: updatePayload }
+      );
 
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ message: "Task updated successfully", updatedTask: { ...task, ...updatePayload } }));
+      res.end(
+        JSON.stringify({
+          message: "Task updated successfully",
+          updatedTask: { ...task, ...updatePayload },
+        })
+      );
     });
-
   } catch (err) {
     console.error(err);
     sendError(res, "Server error");
@@ -283,12 +384,15 @@ export async function updateTask(req: IncomingMessage, res: ServerResponse): Pro
 }
 
 // DELETE TASK
-export const deleteTask = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+export const deleteTask = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
   try {
     const user = await authenticate(req);
     if (!user) {
       res.writeHead(401, { "Content-Type": "application/json" });
-       res.end(JSON.stringify({ message: "Unauthorized" }));
+      res.end(JSON.stringify({ message: "Unauthorized" }));
       return;
     }
 
@@ -299,9 +403,9 @@ export const deleteTask = async (req: IncomingMessage, res: ServerResponse): Pro
     const { ObjectId } = await import("mongodb");
     if (!ObjectId.isValid(taskIdStr)) {
       res.writeHead(400, { "Content-Type": "application/json" });
-       res.end(JSON.stringify({ message: "Invalid task ID" }));
-    return
-      }
+      res.end(JSON.stringify({ message: "Invalid task ID" }));
+      return;
+    }
     const taskId = new ObjectId(taskIdStr);
 
     const tasksCol = getTasksCollection();
@@ -310,23 +414,31 @@ export const deleteTask = async (req: IncomingMessage, res: ServerResponse): Pro
     const task = await tasksCol.findOne({ _id: taskId });
     if (!task) {
       res.writeHead(404, { "Content-Type": "application/json" });
-       res.end(JSON.stringify({ message: "Task not found" }));
-   return
-      }
+      res.end(JSON.stringify({ message: "Task not found" }));
+      return;
+    }
 
     // Check ownership
     if (!task.userId.equals(user._id)) {
       res.writeHead(403, { "Content-Type": "application/json" });
-       res.end(JSON.stringify({ message: "Forbidden: You can only delete your own tasks" }));
-    return
-      }
+      res.end(
+        JSON.stringify({
+          message: "Forbidden: You can only delete your own tasks",
+        })
+      );
+      return;
+    }
 
     // Delete task
     const result = await tasksCol.deleteOne({ _id: taskId });
 
     res.writeHead(204, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "Task deleted successfully", deletedCount: result.deletedCount }));
-    
+    res.end(
+      JSON.stringify({
+        message: "Task deleted successfully",
+        deletedCount: result.deletedCount,
+      })
+    );
   } catch (err) {
     console.error(err);
     res.writeHead(500, { "Content-Type": "application/json" });
