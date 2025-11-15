@@ -2,7 +2,7 @@ import http from "http";
 import { connectToMongo } from "./db/mongo";
 
 import { register, login } from "./controllers/authMongoController";
-// import { getTasks, createTask } from "./controllers/tasksMongoController";
+import {  createTask } from "./controllers/tasksMongoController";
 
 const PORT = process.env.PORT || 8080;
 
@@ -23,7 +23,17 @@ const server = http.createServer((req, res) => {
   // Login
   if (url === "/api/login" && method === "POST") {
     return login(req, res);
+    
   }
+
+
+
+ // CREATE TASK
+  else if (url === "/api/tasks" && method === "POST") {
+    return createTask(req, res);
+  }
+
+
 });
 
 connectToMongo().then(() => {
