@@ -2,7 +2,7 @@ import http from "http";
 import { connectToMongo } from "./db/mongo";
 
 import { register, login } from "./controllers/authMongoController";
-import {  createTask, getTasks, getTaskById } from "./controllers/tasksMongoController";
+import {  createTask, getTasks, getTaskById, updateTask } from "./controllers/tasksMongoController";
 
 const PORT = process.env.PORT || 8080;
 
@@ -43,6 +43,14 @@ const server = http.createServer((req, res) => {
     else if (url && url.startsWith("/api/tasks") && method === "GET") {
       return getTasks(req, res);
     }
+
+ // UPDATE TASK
+  else if (url?.startsWith("/api/tasks/") && method === "PUT") {
+    return updateTask(req, res);
+  }
+
+
+  
 
 });
 

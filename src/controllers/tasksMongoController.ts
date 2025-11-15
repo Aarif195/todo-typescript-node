@@ -213,3 +213,70 @@ export const getTaskById = async (
     res.end(JSON.stringify({ message: "Server error" }));
   }
 };
+
+export async function updateTask(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  try {
+    const user = await authenticate(req);
+    if (!user) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+       res.end(JSON.stringify({ message: "Unauthorized" }));
+       return
+    }
+
+    const urlParts = req.url?.split("/") || [];
+    const taskId = urlParts[urlParts.length - 1]; // Mongo _id as string
+
+    let body = "";
+    req.on("data", chunk => { body += chunk.toString(); });
+
+    req.on("end", async () => {
+      let updatedData: Partial<Pick<Todo, "title" | "description" | "status" | "priority" | "labels">>;
+      try {
+        updatedData = JSON.parse(body);
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ message: "Invalid JSON" }));
+      }
+
+      const tasksCol = getTasksCollection();
+      const task = await tasksCol.findOne({ _id: new ObjectId(taskId) });
+
+      if (!task) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ message: "Task not found" }));
+      }
+
+      if (!task.userId.equals(user._id)) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ message: "Forbidden: You can only update your own tasks" }));
+      }
+
+      // VALIDATIONS
+      const { title, description, status, priority, labels } = updatedData;
+      if (title !== undefined && title.trim() === "") return sendError(res, "Title cannot be empty");
+      if (description !== undefined && description.trim() === "") return sendError(res, "Description cannot be empty");
+      if (status && !allowedStatuses.includes(status.toLowerCase())) return sendError(res, "Invalid status");
+      if (priority && !allowedPriorities.includes(priority.toLowerCase())) return sendError(res, "Invalid priority");
+      if (labels && (!Array.isArray(labels) || labels.some(l => !allowedLabels.includes(l.toLowerCase()))))
+        return sendError(res, "Invalid labels");
+
+      const updatePayload: Partial<Todo> = {
+        title: title !== undefined ? title.trim() : task.title,
+        description: description !== undefined ? description.trim() : task.description,
+        status: status ? (status.toLowerCase() as Todo["status"]) : task.status,
+        priority: priority ? (priority.toLowerCase() as Todo["priority"]) : task.priority,
+        labels: labels ? labels.map(l => l.toLowerCase()) : task.labels,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await tasksCol.updateOne({ _id: new ObjectId(taskId) }, { $set: updatePayload });
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Task updated successfully", updatedTask: { ...task, ...updatePayload } }));
+    });
+
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+}
