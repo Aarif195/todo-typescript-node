@@ -3,8 +3,8 @@ import { getDb } from "../db/mongo";
 import { ObjectId } from "mongodb";
 import { authenticate } from "./authMongoController";
 import { Todo, Reply, Comment } from "../types/todoMongo";
-const db = getDb();
-const tasksCollection = db.collection("tasks");
+// const db = getDb();
+// const tasksCollection = db.collection("tasks");
 
 // Allowed values for tasks
 const allowedPriorities = ["low", "medium", "high"];
