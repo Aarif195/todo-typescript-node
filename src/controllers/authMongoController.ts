@@ -32,7 +32,7 @@ export async function register(req: IncomingMessage, res: ServerResponse) {
       }: { username: string; email: string; password: string } =
         JSON.parse(body);
 
-      // Validation (same as before)
+      // Validation
       if (!username || !email || !password)
         return sendError(res, "All fields are required");
 
@@ -49,15 +49,14 @@ export async function register(req: IncomingMessage, res: ServerResponse) {
         );
 
       const usersCol = getUsersCollection();
-      console.log("USERS COLLECTION CONNECTED");
 
       // Unique email check
-      const emailExists = await usersCol.findOne({ email });
-      if (emailExists) return sendError(res, "Email already exists");
+      if (await usersCol.findOne({ email }))
+        return sendError(res, "Email already exists");
 
       // Unique username check
-      const usernameExists = await usersCol.findOne({ username });
-      if (usernameExists) return sendError(res, "Username already exists");
+      if (await usersCol.findOne({ username }))
+        return sendError(res, "Username already exists");
 
       // Create new user
       const newUser: User = {
@@ -66,18 +65,16 @@ export async function register(req: IncomingMessage, res: ServerResponse) {
         password: hashPassword(password),
       };
 
-      // await usersCol.insertOne(newUser);
       const result = await usersCol.insertOne(newUser);
-      console.log("Inserted user ID:", result.insertedId);
-      console.log("INSERTING USER:", newUser);
-      console.log("USER INSERTED"); // Optional, after insert
+      console.log("User successfully inserted with ID:", result.insertedId);
+      console.log("New user details:", newUser);
 
       res.writeHead(201, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
           message: "User registered successfully",
           user: {
-            id: result.insertedId,
+            id: result.insertedId.toString(),
             username: newUser.username,
             email: newUser.email,
           },
