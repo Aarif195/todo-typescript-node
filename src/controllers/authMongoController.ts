@@ -139,8 +139,19 @@ export async function login(req: IncomingMessage, res: ServerResponse) {
   });
 }
 
-// connectToMongo();
+// AUTHENTICATION 
+export async function authenticate(req: IncomingMessage) {
+  const authHeader = req.headers["authorization"];
+  if (!authHeader) return null;
 
-// server.listen(PORT, () => {
-//   console.log(`Server running on port ${PORT} `);
-// });
+  const parts = authHeader.trim().split(/\s+/);
+  if (parts.length !== 2 || parts[0] !== "Bearer") return null;
+
+  const token = parts[1];
+
+  const usersCol = getUsersCollection(); // MongoDB collection
+  const user = await usersCol.findOne({ token });
+
+  return user || null;
+}
+

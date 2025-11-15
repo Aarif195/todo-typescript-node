@@ -9,14 +9,11 @@ const PORT = process.env.PORT || 8080;
 console.log("ServerMongo is running...");
 console.log("I am fine today");
 
-
-
 const server = http.createServer((req, res) => {
   const url = req.url;
   const method = req.method;
 
   console.log("Incoming request:", req.url, req.method);
-
 
   // Register
   if (url === "/api/register" && method === "POST") {
@@ -28,8 +25,6 @@ const server = http.createServer((req, res) => {
     return login(req, res);
   }
 });
-
-
 
 connectToMongo().then(() => {
   server.listen(PORT, () => {
