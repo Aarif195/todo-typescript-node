@@ -214,6 +214,7 @@ export const getTaskById = async (
   }
 };
 
+// UPDATED
 export async function updateTask(req: IncomingMessage, res: ServerResponse): Promise<void> {
   try {
     const user = await authenticate(req);
@@ -224,7 +225,7 @@ export async function updateTask(req: IncomingMessage, res: ServerResponse): Pro
     }
 
     const urlParts = req.url?.split("/") || [];
-    const taskId = urlParts[urlParts.length - 1]; // Mongo _id as string
+    const taskId = urlParts[urlParts.length - 1];
 
     let body = "";
     req.on("data", chunk => { body += chunk.toString(); });
@@ -280,3 +281,55 @@ export async function updateTask(req: IncomingMessage, res: ServerResponse): Pro
     sendError(res, "Server error");
   }
 }
+
+// DELETE TASK
+export const deleteTask = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+       res.end(JSON.stringify({ message: "Unauthorized" }));
+      return;
+    }
+
+    const urlParts = req.url?.split("/") || [];
+    const taskIdStr = urlParts[urlParts.length - 1];
+
+    // Convert string ID to ObjectId
+    const { ObjectId } = await import("mongodb");
+    if (!ObjectId.isValid(taskIdStr)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+       res.end(JSON.stringify({ message: "Invalid task ID" }));
+    return
+      }
+    const taskId = new ObjectId(taskIdStr);
+
+    const tasksCol = getTasksCollection();
+
+    // Find the task
+    const task = await tasksCol.findOne({ _id: taskId });
+    if (!task) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+       res.end(JSON.stringify({ message: "Task not found" }));
+   return
+      }
+
+    // Check ownership
+    if (!task.userId.equals(user._id)) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+       res.end(JSON.stringify({ message: "Forbidden: You can only delete your own tasks" }));
+    return
+      }
+
+    // Delete task
+    const result = await tasksCol.deleteOne({ _id: taskId });
+
+    res.writeHead(204, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Task deleted successfully", deletedCount: result.deletedCount }));
+    
+  } catch (err) {
+    console.error(err);
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Server error" }));
+  }
+};

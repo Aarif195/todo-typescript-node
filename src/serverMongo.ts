@@ -2,7 +2,7 @@ import http from "http";
 import { connectToMongo } from "./db/mongo";
 
 import { register, login } from "./controllers/authMongoController";
-import {  createTask, getTasks, getTaskById, updateTask } from "./controllers/tasksMongoController";
+import {  createTask, getTasks, getTaskById, updateTask, deleteTask } from "./controllers/tasksMongoController";
 
 const PORT = process.env.PORT || 8080;
 
@@ -50,7 +50,11 @@ const server = http.createServer((req, res) => {
   }
 
 
-  
+  // DELETE TASK
+    else if (url?.startsWith("/api/tasks/") && method === "DELETE") {
+      return deleteTask(req, res);
+    }
+
 
 });
 
