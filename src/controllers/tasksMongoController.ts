@@ -81,3 +81,77 @@ export const createTask = async (req: IncomingMessage, res: ServerResponse): Pro
     sendError(res, "Server error");
   }
 };
+
+  // GET TASKS
+export const getTasks = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+  try {
+    const tasksCol = getTasksCollection(); // MongoDB collection for Todo
+
+    // Fetch all tasks
+    const tasksArray = await tasksCol.find({}).toArray() as Todo[];
+
+    // Sort newest first
+    tasksArray.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    // Parse query parameters for filtering & pagination
+    const fullUrl = new URL(req.url || "", `http://${req.headers.host}`);
+    const queryParams = Object.fromEntries(fullUrl.searchParams.entries());
+
+    const page = Math.max(1, parseInt(queryParams.page || "1"));
+    const limit = Math.max(1, parseInt(queryParams.limit || "10"));
+
+    // Apply filters
+    let filteredTasks = [...tasksArray];
+    for (const key in queryParams) {
+      const value = queryParams[key].toLowerCase();
+
+      if (key === "search") {
+        filteredTasks = filteredTasks.filter(
+          task =>
+            task.title.toLowerCase().includes(value) ||
+            task.description.toLowerCase().includes(value) ||
+            (Array.isArray(task.labels) &&
+              task.labels.some(label => label.toLowerCase().includes(value)))
+        );
+      } else if (key === "labels") {
+        filteredTasks = filteredTasks.filter(
+          task =>
+            Array.isArray(task.labels) &&
+            task.labels.map(label => label.toLowerCase()).includes(value)
+        );
+      } else if (key === "status" && allowedStatuses.includes(value)) {
+        filteredTasks = filteredTasks.filter(task => task.status === value);
+      } else if (key === "priority" && allowedPriorities.includes(value)) {
+        filteredTasks = filteredTasks.filter(task => task.priority === value);
+      } else if (key === "completed") {
+        const isCompleted = value === "true";
+        filteredTasks = filteredTasks.filter(task => task.completed === isCompleted);
+      }
+    }
+
+    // Pagination
+    const totalData = filteredTasks.length;
+    const totalPages = totalData === 0 ? 0 : Math.ceil(totalData / limit);
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const dataSlice = filteredTasks.slice(startIndex, endIndex);
+
+    // Send response
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        totalData,
+        totalPages,
+        currentPage: page,
+        limit,
+        data: dataSlice,
+      })
+    );
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+};
+
