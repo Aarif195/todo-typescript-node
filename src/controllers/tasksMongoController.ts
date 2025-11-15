@@ -1,7 +1,7 @@
 import {  ServerResponse } from "http";
 import { getDb } from "../db/mongo";
-const db = getDb();
-const tasksCollection = db.collection("tasks");
+// const db = getDb();
+// const tasksCollection = db.collection("tasks");
 
 
 

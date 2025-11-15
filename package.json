@@ -5,7 +5,8 @@
   "scripts": {
     "start": "ts-node src/server.ts",
     "dev": "tsc && node dist/server.js",
-    "watch": "nodemon src/server.ts"
+    "watch": "nodemon src/server.ts",
+    "mongo": "nodemon src/serverMongo.ts"
   },
   "keywords": [
     "typescript",

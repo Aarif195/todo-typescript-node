@@ -1,5 +1,5 @@
 import http from "http";
-import { connectToMongo } from "./db/mongo";
+
 
 
 import { register, login } from "./controllers/authController";
@@ -20,6 +20,8 @@ import {
   editCommentOrReply,
   deleteCommentOrReply,
 } from "./controllers/tasksController";
+
+
 
 const PORT = process.env.PORT || 8080;
 
@@ -184,7 +186,6 @@ const server = http.createServer((req, res) => {
 });
 
 
-connectToMongo();
 
 
 server.listen(PORT, () => {
