@@ -21,7 +21,6 @@ export type Reply = {
   userId: ObjectId; // reference to User._id
   username: string;
   text: string;
-  date: string;
   updatedAt?: string;
 };
 

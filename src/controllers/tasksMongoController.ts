@@ -589,3 +589,79 @@ export const postTaskComment = async (
     sendError(res, "Server error");
   }
 };
+
+
+// REPLY TO COMMENT
+export const replyTaskComment = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) return sendError(res, "Unauthorized");
+
+    const urlParts = req.url?.split("/") || [];
+    const commentIdStr = urlParts[urlParts.length - 2]; // Assuming endpoint: /api/tasks/comment/:commentId/reply
+
+    if (!ObjectId.isValid(commentIdStr))
+      return sendError(res, "Invalid comment ID");
+
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+
+    req.on("end", async () => {
+      let replyData: Partial<Reply>;
+      try {
+        replyData = JSON.parse(body);
+      } catch {
+        return sendError(res, "Invalid JSON");
+      }
+
+      const { text } = replyData;
+      if (!text || text.trim() === "")
+        return sendError(res, "Text cannot be empty");
+
+      const tasksCol = getTasksCollection();
+
+      // Find the task that contains this comment
+      const task = await tasksCol.findOne({
+        "comments._id": new ObjectId(commentIdStr),
+      });
+
+      if (!task) return sendError(res, "Comment not found");
+
+      // Ensure only the task owner can reply (private)
+      if (!task.userId.equals(user._id))
+        return sendError(res, "Forbidden: Private task");
+
+      const reply: Reply = {
+        _id: new ObjectId(),
+        userId: user._id,
+        username: user.username,
+        text: text.trim(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Push reply into the comment's replies array
+      await tasksCol.updateOne(
+        { "comments._id": new ObjectId(commentIdStr) },
+        { $push: { "comments.$.replies": reply } as any }
+      );
+
+
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          message: "Reply added successfully",
+          reply,
+        })
+      );
+    });
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+};
