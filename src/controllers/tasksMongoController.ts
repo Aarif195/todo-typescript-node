@@ -225,7 +225,7 @@ export async function toggleTaskCompletion(
         ? task.userId
         : new ObjectId(task.userId);
 
-    if (!taskUserId.equals(user._id) ) {
+    if (!taskUserId.equals(user!._id) ) {
       res.writeHead(403, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
