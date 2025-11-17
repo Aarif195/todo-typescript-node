@@ -445,3 +445,76 @@ export const deleteTask = async (
     res.end(JSON.stringify({ message: "Server error" }));
   }
 };
+
+// LIKE TASK
+export const likeTask = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+       res.end(JSON.stringify({ message: "Unauthorized" }));
+    
+    return;
+      }
+
+    const urlParts = req.url?.split("/") || [];
+    const taskIdStr = urlParts[urlParts.length - 2]; // assuming /tasks/:id/like
+    if (!ObjectId.isValid(taskIdStr)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+       res.end(JSON.stringify({ message: "Invalid task ID" }));
+    
+    return;
+      }
+    const taskId = new ObjectId(taskIdStr);
+
+    const tasksCol = getTasksCollection();
+    const task = await tasksCol.findOne({ _id: taskId });
+
+    if (!task) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+       res.end(JSON.stringify({ message: "Task not found" }));
+    return
+      }
+
+    // Toggle like
+    let message = "";
+    const likedBy = Array.isArray(task.likedBy) ? task.likedBy : [];
+    let liked = false;
+
+    if (likedBy.some((id: ObjectId) => id.equals(user._id))) {
+      // User already liked → unlike
+      const newLikedBy = likedBy.filter((id: ObjectId) => !id.equals(user._id));
+      await tasksCol.updateOne({ _id: taskId }, { $set: { likedBy: newLikedBy } });
+      message = "Task unliked!";
+      liked = false;
+      task.likes = newLikedBy.length;
+    } else {
+      // Like
+      const newLikedBy = [...likedBy, user._id];
+      await tasksCol.updateOne({ _id: taskId }, { $set: { likedBy: newLikedBy } });
+      message = "Task liked!";
+      liked = true;
+      task.likes = newLikedBy.length;
+    }
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        message,
+        task: {
+          ...task,
+          liked,
+        },
+      })
+    );
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+};
+
+
+
