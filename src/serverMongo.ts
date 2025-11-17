@@ -14,7 +14,7 @@ import {
   replyTaskComment,
   getTaskComments,
   getMyTasks,
-  likeComment,
+  likeComment,likeReply
 } from "./controllers/tasksMongoController";
 
 const PORT = process.env.PORT || 8080;
@@ -111,6 +111,19 @@ const server = http.createServer((req, res) => {
   ) {
     return likeComment(req, res);
   }
+
+
+// LIKE/UNLIKE A REPLY
+if (
+  url?.startsWith("/api/tasks/") &&
+  url.includes("/replies/") &&
+  url.endsWith("/like") &&
+  method === "POST"
+) {
+  return likeReply(req, res);
+}
+
+
 
   // DELETE TASK
   else if (url?.startsWith("/api/tasks/") && method === "DELETE") {
