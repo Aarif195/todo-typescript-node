@@ -195,7 +195,7 @@ export async function toggleTaskCompletion(
     }
 
     const urlParts = req.url?.split("/") || [];
-    // Expecting: /api/tasks/:taskId/:action  (action === "complete" | "incomplete")
+  
     const taskIdStr = urlParts[urlParts.length - 2];
     const action = urlParts[urlParts.length - 1];
 
@@ -783,6 +783,68 @@ export const getMyTasks = async (
         currentPage: page,
         limit,
         data: dataSlice,
+      })
+    );
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+};
+
+
+
+// LIKE/UNLIKE A COMMENT
+export const likeComment = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) return sendError(res, "Unauthorized");
+
+    const urlParts = req.url?.split("/") || [];
+    const commentIdStr = urlParts[urlParts.length - 1];
+
+    if (!ObjectId.isValid(commentIdStr)) return sendError(res, "Invalid comment ID");
+
+    const tasksCol = getTasksCollection();
+
+    // Find the comment within any task
+    const task = await tasksCol.findOne({ "comments._id": new ObjectId(commentIdStr) });
+    if (!task) return sendError(res, "Comment not found");
+
+    const comment = task.comments.find(c => c._id?.equals(new ObjectId(commentIdStr)));
+    if (!comment) return sendError(res, "Comment not found");
+
+    // Toggle like
+    let liked = false;
+    const likedBy: ObjectId[] = Array.isArray(comment.likedBy) ? comment.likedBy : [];
+
+    if (likedBy.some(id => id.equals(user._id))) {
+      // Unlike
+      const newLikedBy = likedBy.filter(id => !id.equals(user._id));
+      await tasksCol.updateOne(
+        { "comments._id": new ObjectId(commentIdStr) },
+        { $set: { "comments.$.likedBy": newLikedBy } }
+      );
+      liked = false;
+      comment.likes = newLikedBy.length;
+    } else {
+      // Like
+      const newLikedBy = [...likedBy, user._id];
+      await tasksCol.updateOne(
+        { "comments._id": new ObjectId(commentIdStr) },
+        { $set: { "comments.$.likedBy": newLikedBy } }
+      );
+      liked = true;
+      comment.likes = newLikedBy.length;
+    }
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        message: liked ? "Comment liked!" : "Comment unliked!",
+        comment: { ...comment, liked },
       })
     );
   } catch (err) {
