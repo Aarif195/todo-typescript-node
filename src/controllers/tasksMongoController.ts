@@ -521,3 +521,71 @@ export const likeTask = async (
     sendError(res, "Server error");
   }
 };
+
+
+// POST COMMENT/ADD
+export const postTaskComment = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) return sendError(res, "Unauthorized");
+
+    const urlParts = req.url?.split("/") || [];
+    const taskIdStr = urlParts[urlParts.length - 2]; // assuming /tasks/:id/comment
+
+    if (!ObjectId.isValid(taskIdStr))
+      return sendError(res, "Invalid task ID");
+    const taskId = new ObjectId(taskIdStr);
+
+    let body = "";
+    req.on("data", (chunk) => (body += chunk.toString()));
+    req.on("end", async () => {
+      let { text }: { text?: string } = {};
+      try {
+        ({ text } = JSON.parse(body));
+      } catch {
+        return sendError(res, "Invalid JSON");
+      }
+
+      if (!text || text.trim() === "")
+        return sendError(res, "Comment cannot be empty");
+
+      const tasksCol = getTasksCollection();
+      const task = await tasksCol.findOne({ _id: taskId });
+      if (!task) return sendError(res, "Task not found" );
+
+      // Prepare comment object
+      const newComment: Comment = {
+        _id: new ObjectId(),
+        userId: user._id,
+        username: user.username,
+        text: text.trim(),
+        replies: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const updatedComments = Array.isArray(task.comments)
+        ? [...task.comments, newComment]
+        : [newComment];
+
+      await tasksCol.updateOne(
+        { _id: taskId },
+        { $set: { comments: updatedComments, updatedAt: new Date().toISOString() } }
+      );
+
+      res.writeHead(201, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          message: "Comment added successfully",
+          comment: newComment,
+        })
+      );
+    });
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+};

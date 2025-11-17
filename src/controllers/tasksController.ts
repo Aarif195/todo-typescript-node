@@ -622,7 +622,7 @@ export function postTaskComment(req: IncomingMessage, res: ServerResponse) {
     const newComment: Comment = {
       id: Date.now(),
       userId: user.id, // Use ID
-      username: user.username, // Include username for display
+      username: user.username, 
       text: text.trim(),
       date: new Date().toISOString(),
       replies: [],

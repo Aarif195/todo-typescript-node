@@ -10,16 +10,15 @@ export type Todo = {
   completed: boolean;
   createdAt: string;
   updatedAt: string;
-  userId: ObjectId; 
+  userId: ObjectId;
   isLiked?: boolean;
   likesCount?: number;
   comments?: Comment[];
 };
 
-
 export type Reply = {
-  _id?: ObjectId;       // Mongo-generated ID
-  userId: ObjectId;     // reference to User._id
+  _id?: ObjectId; // Mongo-generated ID
+  userId: ObjectId; // reference to User._id
   username: string;
   text: string;
   date: string;
@@ -27,11 +26,11 @@ export type Reply = {
 };
 
 export type Comment = {
-  _id?: ObjectId;       // Mongo-generated ID
-  userId: ObjectId;     // reference to User._id
+  _id?: ObjectId; // Mongo-generated ID
+  userId: ObjectId; // reference to User._id
   username: string;
   text: string;
-  date: string;
+  createdAt: string;
   updatedAt?: string;
   replies: Reply[];
 };
