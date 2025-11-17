@@ -677,7 +677,7 @@ export const getTaskComments = async (
     if (!user) return sendError(res, "Unauthorized");
 
     const urlParts = req.url?.split("/") || [];
-    const taskIdStr = urlParts[urlParts.length - 1];
+    const taskIdStr = urlParts[urlParts.length - 2];
 
     if (!ObjectId.isValid(taskIdStr))
       return sendError(res, "Invalid task ID");
