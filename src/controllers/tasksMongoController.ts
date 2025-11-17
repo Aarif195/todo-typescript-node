@@ -455,19 +455,19 @@ export const likeTask = async (
     const user = await authenticate(req);
     if (!user) {
       res.writeHead(401, { "Content-Type": "application/json" });
-       res.end(JSON.stringify({ message: "Unauthorized" }));
-    
-    return;
-      }
+      res.end(JSON.stringify({ message: "Unauthorized" }));
+
+      return;
+    }
 
     const urlParts = req.url?.split("/") || [];
     const taskIdStr = urlParts[urlParts.length - 2]; // assuming /tasks/:id/like
     if (!ObjectId.isValid(taskIdStr)) {
       res.writeHead(400, { "Content-Type": "application/json" });
-       res.end(JSON.stringify({ message: "Invalid task ID" }));
-    
-    return;
-      }
+      res.end(JSON.stringify({ message: "Invalid task ID" }));
+
+      return;
+    }
     const taskId = new ObjectId(taskIdStr);
 
     const tasksCol = getTasksCollection();
@@ -475,37 +475,43 @@ export const likeTask = async (
 
     if (!task) {
       res.writeHead(404, { "Content-Type": "application/json" });
-       res.end(JSON.stringify({ message: "Task not found" }));
-    return
-      }
+      res.end(JSON.stringify({ message: "Task not found" }));
+      return;
+    }
 
     // Toggle like
     let message = "";
-    const likedBy = Array.isArray(task.likedBy) ? task.likedBy : [];
     let liked = false;
+    const likedBy = Array.isArray(task.likedBy) ? task.likedBy : [];
+
+    let newLikedBy: ObjectId[];
 
     if (likedBy.some((id: ObjectId) => id.equals(user._id))) {
       // User already liked → unlike
-      const newLikedBy = likedBy.filter((id: ObjectId) => !id.equals(user._id));
-      await tasksCol.updateOne({ _id: taskId }, { $set: { likedBy: newLikedBy } });
+      newLikedBy = likedBy.filter((id: ObjectId) => !id.equals(user._id));
       message = "Task unliked!";
       liked = false;
-      task.likes = newLikedBy.length;
     } else {
       // Like
-      const newLikedBy = [...likedBy, user._id];
-      await tasksCol.updateOne({ _id: taskId }, { $set: { likedBy: newLikedBy } });
+      newLikedBy = [...likedBy, user._id];
       message = "Task liked!";
       liked = true;
-      task.likes = newLikedBy.length;
     }
 
+    await tasksCol.updateOne(
+      { _id: taskId },
+      { $set: { likedBy: newLikedBy, likes: newLikedBy.length } }
+    );
+
+    // Send response using updated array
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(
       JSON.stringify({
         message,
         task: {
           ...task,
+          likedBy: newLikedBy,
+          likes: newLikedBy.length,
           liked,
         },
       })
@@ -515,6 +521,3 @@ export const likeTask = async (
     sendError(res, "Server error");
   }
 };
-
-
-
