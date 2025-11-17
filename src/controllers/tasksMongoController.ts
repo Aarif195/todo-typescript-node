@@ -665,3 +665,36 @@ export const replyTaskComment = async (
     sendError(res, "Server error");
   }
 };
+
+
+// GET TASK COMMENTS
+export const getTaskComments = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) return sendError(res, "Unauthorized");
+
+    const urlParts = req.url?.split("/") || [];
+    const taskIdStr = urlParts[urlParts.length - 1];
+
+    if (!ObjectId.isValid(taskIdStr))
+      return sendError(res, "Invalid task ID");
+
+    const tasksCol = getTasksCollection();
+    const task = await tasksCol.findOne({ _id: new ObjectId(taskIdStr) });
+
+    if (!task) return sendError(res, "Task not found");
+
+    // Ensure private: only owner can view
+    if (!task.userId.equals(user._id))
+      return sendError(res, "Forbidden: You can only view your own task comments");
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ comments: task.comments || [] }));
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+};
