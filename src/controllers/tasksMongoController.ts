@@ -853,7 +853,6 @@ export const likeComment = async (
     comment.likedBy = newLikedBy;
     comment.likes = newLikedBy.length;
     comment.liked = liked;
-    
 
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(
@@ -868,7 +867,6 @@ export const likeComment = async (
   }
 };
 
-
 // LIKE/UNLIKE A REPLY
 export async function likeReply(req: IncomingMessage, res: ServerResponse) {
   try {
@@ -877,12 +875,15 @@ export async function likeReply(req: IncomingMessage, res: ServerResponse) {
 
     const urlParts = req.url?.split("/") || [];
     const replyIdStr = urlParts[urlParts.length - 2];
-    if (!ObjectId.isValid(replyIdStr)) return sendError(res, "Invalid reply ID");
+    if (!ObjectId.isValid(replyIdStr))
+      return sendError(res, "Invalid reply ID");
 
     const tasksCol = getTasksCollection();
 
     // Find the task containing the reply
-    const task = await tasksCol.findOne({ "comments.replies._id": new ObjectId(replyIdStr) });
+    const task = await tasksCol.findOne({
+      "comments.replies._id": new ObjectId(replyIdStr),
+    });
     if (!task) return sendError(res, "Reply not found");
 
     // Find the specific comment containing the reply
@@ -892,33 +893,50 @@ export async function likeReply(req: IncomingMessage, res: ServerResponse) {
     if (!comment) return sendError(res, "Reply not found in any comment");
 
     // Find the reply
-    const reply = comment.replies.find((r: Reply) => r._id?.equals(new ObjectId(replyIdStr)));
+    const reply = comment.replies.find((r: Reply) =>
+      r._id?.equals(new ObjectId(replyIdStr))
+    );
     if (!reply) return sendError(res, "Reply not found");
 
     // Initialize likedBy array
-    const likedBy: ObjectId[] = Array.isArray(reply.likedBy) ? reply.likedBy : [];
+    // Toggle like for reply
     let liked = false;
+    const likedBy: ObjectId[] = Array.isArray(reply.likedBy)
+      ? reply.likedBy
+      : [];
 
-    if (likedBy.some(id => id.equals(user._id))) {
+    if (likedBy.some((id) => id.equals(user._id))) {
       // Unlike
-      const newLikedBy = likedBy.filter(id => !id.equals(user._id));
+      const newLikedBy = likedBy.filter((id) => !id.equals(user._id));
       await tasksCol.updateOne(
         { "comments.replies._id": new ObjectId(replyIdStr) },
-        { $set: { "comments.$[].replies.$[rep].likedBy": newLikedBy } },
-        { arrayFilters: [{ "rep._id": new ObjectId(replyIdStr) }] }
+        {
+          $set: {
+            "comments.$[].replies.$[r].likedBy": newLikedBy,
+            "comments.$[].replies.$[r].likes": newLikedBy.length,
+          },
+        },
+        { arrayFilters: [{ "r._id": new ObjectId(replyIdStr) }] }
       );
       liked = false;
       reply.likes = newLikedBy.length;
+      reply.likedBy = newLikedBy;
     } else {
       // Like
       const newLikedBy = [...likedBy, user._id];
       await tasksCol.updateOne(
         { "comments.replies._id": new ObjectId(replyIdStr) },
-        { $set: { "comments.$[].replies.$[rep].likedBy": newLikedBy } },
-        { arrayFilters: [{ "rep._id": new ObjectId(replyIdStr) }] }
+        {
+          $set: {
+            "comments.$[].replies.$[r].likedBy": newLikedBy,
+            "comments.$[].replies.$[r].likes": newLikedBy.length,
+          },
+        },
+        { arrayFilters: [{ "r._id": new ObjectId(replyIdStr) }] }
       );
       liked = true;
       reply.likes = newLikedBy.length;
+      reply.likedBy = newLikedBy;
     }
 
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -933,4 +951,3 @@ export async function likeReply(req: IncomingMessage, res: ServerResponse) {
     sendError(res, "Server error");
   }
 }
-
