@@ -698,3 +698,38 @@ export const getTaskComments = async (
     sendError(res, "Server error");
   }
 };
+
+
+// GET TASKS CREATED BY THE LOGGED-IN USER
+export const getMyTasks = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+       res.end(JSON.stringify({ message: "Unauthorized" }));
+    return;
+      }
+
+    const tasksCol = getTasksCollection();
+
+    // Fetch all tasks created by this user
+    const userTasks = (await tasksCol
+      .find({ userId: user._id })
+      .toArray()) as Todo[];
+
+    // Sort newest first
+    userTasks.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(userTasks));
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+};

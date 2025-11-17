@@ -2,7 +2,7 @@ import http from "http";
 import { connectToMongo } from "./db/mongo";
 
 import { register, login } from "./controllers/authMongoController";
-import {  createTask, getTasks, getTaskById, updateTask, deleteTask, toggleTaskCompletion, likeTask , postTaskComment, replyTaskComment, getTaskComments} from "./controllers/tasksMongoController";
+import {  createTask, getTasks, getTaskById, updateTask, deleteTask, toggleTaskCompletion, likeTask , postTaskComment, replyTaskComment, getTaskComments, getMyTasks} from "./controllers/tasksMongoController";
 
 const PORT = process.env.PORT || 8080;
 
@@ -113,6 +113,11 @@ else if (
         return likeTask(req, res);
         
       } 
+
+  // USER'S TASK
+  else if (url === "/api/user/my-tasks" && method === "GET") {
+    getMyTasks(req, res);
+  }
 
 
 });
