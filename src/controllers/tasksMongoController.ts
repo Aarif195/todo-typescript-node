@@ -707,27 +707,77 @@ export const getMyTasks = async (
 ): Promise<void> => {
   try {
     const user = await authenticate(req);
-    if (!user) {
-      res.writeHead(401, { "Content-Type": "application/json" });
-       res.end(JSON.stringify({ message: "Unauthorized" }));
-    return;
-      }
+    if (!user) return sendError(res, "Unauthorized");
 
     const tasksCol = getTasksCollection();
 
     // Fetch all tasks created by this user
-    const userTasks = (await tasksCol
+    const tasksArray = (await tasksCol
       .find({ userId: user._id })
       .toArray()) as Todo[];
 
     // Sort newest first
-    userTasks.sort(
+    tasksArray.sort(
       (a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
+    // Parse query parameters
+    const fullUrl = new URL(req.url || "", `http://${req.headers.host}`);
+    const queryParams = Object.fromEntries(fullUrl.searchParams.entries());
+
+    const page = Math.max(1, parseInt(queryParams.page || "1"));
+    const limit = Math.max(1, parseInt(queryParams.limit || "10"));
+
+    // Apply filters if any
+    let filteredTasks = [...tasksArray];
+    for (const key in queryParams) {
+      const value = queryParams[key].toLowerCase();
+
+      if (key === "search") {
+        filteredTasks = filteredTasks.filter(
+          (task) =>
+            task.title.toLowerCase().includes(value) ||
+            task.description.toLowerCase().includes(value) ||
+            (Array.isArray(task.labels) &&
+              task.labels.some((label) => label.toLowerCase().includes(value)))
+        );
+      } else if (key === "labels") {
+        filteredTasks = filteredTasks.filter(
+          (task) =>
+            Array.isArray(task.labels) &&
+            task.labels.map((l) => l.toLowerCase()).includes(value)
+        );
+      } else if (key === "status" && allowedStatuses.includes(value)) {
+        filteredTasks = filteredTasks.filter((task) => task.status === value);
+      } else if (key === "priority" && allowedPriorities.includes(value)) {
+        filteredTasks = filteredTasks.filter((task) => task.priority === value);
+      } else if (key === "completed") {
+        const isCompleted = value === "true";
+        filteredTasks = filteredTasks.filter(
+          (task) => task.completed === isCompleted
+        );
+      }
+    }
+
+    // Pagination
+    const totalData = filteredTasks.length;
+    const totalPages = totalData === 0 ? 0 : Math.ceil(totalData / limit);
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const dataSlice = filteredTasks.slice(startIndex, endIndex);
+
+    // Send response
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(userTasks));
+    res.end(
+      JSON.stringify({
+        totalData,
+        totalPages,
+        currentPage: page,
+        limit,
+        data: dataSlice,
+      })
+    );
   } catch (err) {
     console.error(err);
     sendError(res, "Server error");
