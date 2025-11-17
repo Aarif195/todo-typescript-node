@@ -195,7 +195,7 @@ export async function toggleTaskCompletion(
     }
 
     const urlParts = req.url?.split("/") || [];
-  
+
     const taskIdStr = urlParts[urlParts.length - 2];
     const action = urlParts[urlParts.length - 1];
 
@@ -215,17 +215,16 @@ export async function toggleTaskCompletion(
     const task = await tasksCol.findOne({ _id: taskId });
     if (!task) {
       res.writeHead(404, { "Content-Type": "application/json" });
-       res.end(JSON.stringify({ message: "Task not found" }));
-    return
-      }
-
+      res.end(JSON.stringify({ message: "Task not found" }));
+      return;
+    }
 
     const taskUserId =
       task.userId && task.userId._bsontype === "ObjectID"
         ? task.userId
         : new ObjectId(task.userId);
 
-    if (!taskUserId.equals(user!._id) ) {
+    if (!taskUserId.equals(user!._id)) {
       res.writeHead(403, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
@@ -791,8 +790,6 @@ export const getMyTasks = async (
   }
 };
 
-
-
 // LIKE/UNLIKE A COMMENT
 export const likeComment = async (
   req: IncomingMessage,
@@ -803,48 +800,66 @@ export const likeComment = async (
     if (!user) return sendError(res, "Unauthorized");
 
     const urlParts = req.url?.split("/") || [];
-    const commentIdStr = urlParts[urlParts.length - 1];
+    const commentIdStr = urlParts[urlParts.length - 2];
 
-    if (!ObjectId.isValid(commentIdStr)) return sendError(res, "Invalid comment ID");
+    if (!ObjectId.isValid(commentIdStr))
+      return sendError(res, "Invalid comment ID");
 
     const tasksCol = getTasksCollection();
 
     // Find the comment within any task
-    const task = await tasksCol.findOne({ "comments._id": new ObjectId(commentIdStr) });
+    const task = await tasksCol.findOne({
+      "comments._id": new ObjectId(commentIdStr),
+    });
     if (!task) return sendError(res, "Comment not found");
 
-    const comment = task.comments.find(c => c._id?.equals(new ObjectId(commentIdStr)));
+    const comment = task.comments.find((c: Comment) =>
+      c._id?.equals(new ObjectId(commentIdStr))
+    );
+
     if (!comment) return sendError(res, "Comment not found");
 
     // Toggle like
     let liked = false;
-    const likedBy: ObjectId[] = Array.isArray(comment.likedBy) ? comment.likedBy : [];
+    const likedBy: ObjectId[] = Array.isArray(comment.likedBy)
+      ? comment.likedBy
+      : [];
 
-    if (likedBy.some(id => id.equals(user._id))) {
+    let newLikedBy: ObjectId[];
+
+    if (likedBy.some((id) => id.equals(user._id))) {
       // Unlike
-      const newLikedBy = likedBy.filter(id => !id.equals(user._id));
-      await tasksCol.updateOne(
-        { "comments._id": new ObjectId(commentIdStr) },
-        { $set: { "comments.$.likedBy": newLikedBy } }
-      );
+      newLikedBy = likedBy.filter((id) => !id.equals(user._id));
       liked = false;
-      comment.likes = newLikedBy.length;
     } else {
       // Like
-      const newLikedBy = [...likedBy, user._id];
-      await tasksCol.updateOne(
-        { "comments._id": new ObjectId(commentIdStr) },
-        { $set: { "comments.$.likedBy": newLikedBy } }
-      );
+      newLikedBy = [...likedBy, user._id];
       liked = true;
-      comment.likes = newLikedBy.length;
     }
+
+    // Update the comment's likedBy and likes in MongoDB
+    await tasksCol.updateOne(
+      { "comments._id": new ObjectId(commentIdStr) },
+      {
+        $set: {
+          "comments.$.likedBy": newLikedBy,
+          "comments.$.likes": newLikedBy.length,
+          "comments.$.updatedAt": new Date().toISOString(),
+        },
+      }
+    );
+
+    // Update local comment object for response
+    comment.likedBy = newLikedBy;
+    comment.likes = newLikedBy.length;
+    comment.liked = liked;
+    
 
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(
       JSON.stringify({
         message: liked ? "Comment liked!" : "Comment unliked!",
-        comment: { ...comment, liked },
+        comment,
       })
     );
   } catch (err) {
