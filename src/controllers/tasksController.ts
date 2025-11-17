@@ -250,51 +250,59 @@ export function getTasks(req: IncomingMessage, res: ServerResponse): void {
 }
 
 // Mark task as completed or incomplete
-export function toggleTaskCompletion(
-  req: IncomingMessage,
-  res: ServerResponse
-): void {
+export function toggleTaskCompletion(req: IncomingMessage, res: ServerResponse) {
   const user = authenticate(req);
   if (!user) {
     res.writeHead(401, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "Unauthorized" }));
-    return;
+    return res.end(JSON.stringify({ message: "Unauthorized" }));
   }
 
   const urlParts = req.url?.split("/") || [];
-  const taskIdStr = urlParts[urlParts.length - 2];
-  const action = urlParts[urlParts.length - 1];
-  const taskId = parseInt(taskIdStr);
+  const taskId = parseInt(urlParts[urlParts.length - 2] || "0");
+  const action = urlParts[urlParts.length - 1]; 
 
-  if (isNaN(taskId)) {
+  if (!taskId) {
     res.writeHead(400, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "Invalid task ID" }));
-    return;
+    return res.end(JSON.stringify({ message: "Invalid task ID" }));
   }
 
-  const tasks: Todo[] = JSON.parse(fs.readFileSync(file, "utf8"));
-  const task = tasks.find((t) => t.id === taskId && t.userId === user.id);
+  const data = fs.readFileSync(file, "utf8");
+  const tasks = JSON.parse(data) as Todo[];
 
+  const task = tasks.find((t) => t.id === taskId);
   if (!task) {
     res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "Task not found" }));
-    return;
+    return res.end(JSON.stringify({ message: "Task not found" }));
   }
 
-  if (action === "complete") task.completed = true;
-  else if (action === "incomplete") task.completed = false;
-  else {
+  // Owner check
+  if (task.userId !== user.id) {
+    res.writeHead(403, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ message: "Forbidden: You can only modify your own tasks" }));
+  }
+
+  // Validate action
+  if (action !== "complete" && action !== "incomplete") {
     res.writeHead(400, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "Invalid action" }));
-    return;
+    return res.end(JSON.stringify({ message: "Invalid action" }));
   }
 
+  // Toggle
+  const newCompleted = action === "complete";
+  task.completed = newCompleted;
   task.updatedAt = new Date().toISOString();
+
   fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
 
   res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ message: `Task marked as ${action}`, task }));
+  return res.end(
+    JSON.stringify({
+      message: `Task marked as ${action}`,
+      task,
+    })
+  );
 }
+
 
 //  get Task By by ID
 export function getTaskById(req: IncomingMessage, res: ServerResponse): void {

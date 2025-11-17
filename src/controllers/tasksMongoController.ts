@@ -182,70 +182,77 @@ export const getTasks = async (
   }
 };
 
-// Mark task as completed or incomplete
-export const toggleTaskCompletion = async (
+// TOGGLE TASK COMPLETION
+export async function toggleTaskCompletion(
   req: IncomingMessage,
   res: ServerResponse
-): Promise<void> => {
+): Promise<void> {
   try {
     const user = await authenticate(req);
     if (!user) {
       res.writeHead(401, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ message: "Unauthorized" }));
-      return;
     }
 
     const urlParts = req.url?.split("/") || [];
+    // Expecting: /api/tasks/:taskId/:action  (action === "complete" | "incomplete")
     const taskIdStr = urlParts[urlParts.length - 2];
     const action = urlParts[urlParts.length - 1];
 
-    const { ObjectId } = await import("mongodb");
     if (!ObjectId.isValid(taskIdStr)) {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ message: "Invalid task ID" }));
-      return;
     }
-    const taskId = new ObjectId(taskIdStr);
 
     if (action !== "complete" && action !== "incomplete") {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ message: "Invalid action" }));
-      return;
     }
 
+    const taskId = new ObjectId(taskIdStr);
     const tasksCol = getTasksCollection();
 
-    const task = await tasksCol.findOne({ _id: taskId, userId: user._id });
+    const task = await tasksCol.findOne({ _id: taskId });
     if (!task) {
       res.writeHead(404, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ message: "Task not found" }));
-      return;
-    }
+       res.end(JSON.stringify({ message: "Task not found" }));
+    return
+      }
 
-    const updatedTask = await tasksCol.findOneAndUpdate(
-      { _id: taskId },
-      {
-        $set: {
-          completed: action === "complete",
-          updatedAt: new Date().toISOString(),
-        },
-      },
-      { returnDocument: "after" }
-    );
 
-    if (!updatedTask || !updatedTask.value) {
-      res.writeHead(404, { "Content-Type": "application/json" });
+    const taskUserId =
+      task.userId && task.userId._bsontype === "ObjectID"
+        ? task.userId
+        : new ObjectId(task.userId);
+
+    if (!taskUserId.equals(user._id) ) {
+      res.writeHead(403, { "Content-Type": "application/json" });
       res.end(
-        JSON.stringify({ message: "Task not found or failed to update" })
+        JSON.stringify({
+          message: "Forbidden: You can only modify your own tasks",
+        })
       );
       return;
     }
+
+    const newCompleted = action === "complete";
+    await tasksCol.updateOne(
+      { _id: taskId },
+      { $set: { completed: newCompleted, updatedAt: new Date().toISOString() } }
+    );
+
+    // return updated task object (merge original task with changes)
+    const updatedTask = {
+      ...task,
+      completed: newCompleted,
+      updatedAt: new Date().toISOString(),
+    };
 
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(
       JSON.stringify({
         message: `Task marked as ${action}`,
-        task: updatedTask.value,
+        task: updatedTask,
       })
     );
   } catch (err) {
@@ -253,7 +260,7 @@ export const toggleTaskCompletion = async (
     res.writeHead(500, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ message: "Server error" }));
   }
-};
+}
 
 // GET TASK BY ID
 export const getTaskById = async (
@@ -522,7 +529,6 @@ export const likeTask = async (
   }
 };
 
-
 // POST COMMENT/ADD
 export const postTaskComment = async (
   req: IncomingMessage,
@@ -535,8 +541,7 @@ export const postTaskComment = async (
     const urlParts = req.url?.split("/") || [];
     const taskIdStr = urlParts[urlParts.length - 2]; // assuming /tasks/:id/comment
 
-    if (!ObjectId.isValid(taskIdStr))
-      return sendError(res, "Invalid task ID");
+    if (!ObjectId.isValid(taskIdStr)) return sendError(res, "Invalid task ID");
     const taskId = new ObjectId(taskIdStr);
 
     let body = "";
@@ -554,7 +559,7 @@ export const postTaskComment = async (
 
       const tasksCol = getTasksCollection();
       const task = await tasksCol.findOne({ _id: taskId });
-      if (!task) return sendError(res, "Task not found" );
+      if (!task) return sendError(res, "Task not found");
 
       // Prepare comment object
       const newComment: Comment = {
@@ -573,7 +578,12 @@ export const postTaskComment = async (
 
       await tasksCol.updateOne(
         { _id: taskId },
-        { $set: { comments: updatedComments, updatedAt: new Date().toISOString() } }
+        {
+          $set: {
+            comments: updatedComments,
+            updatedAt: new Date().toISOString(),
+          },
+        }
       );
 
       res.writeHead(201, { "Content-Type": "application/json" });
@@ -589,7 +599,6 @@ export const postTaskComment = async (
     sendError(res, "Server error");
   }
 };
-
 
 // REPLY TO COMMENT
 export const replyTaskComment = async (
@@ -650,8 +659,6 @@ export const replyTaskComment = async (
         { $push: { "comments.$.replies": reply } as any }
       );
 
-
-
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
@@ -666,7 +673,6 @@ export const replyTaskComment = async (
   }
 };
 
-
 // GET TASK COMMENTS
 export const getTaskComments = async (
   req: IncomingMessage,
@@ -679,8 +685,7 @@ export const getTaskComments = async (
     const urlParts = req.url?.split("/") || [];
     const taskIdStr = urlParts[urlParts.length - 2];
 
-    if (!ObjectId.isValid(taskIdStr))
-      return sendError(res, "Invalid task ID");
+    if (!ObjectId.isValid(taskIdStr)) return sendError(res, "Invalid task ID");
 
     const tasksCol = getTasksCollection();
     const task = await tasksCol.findOne({ _id: new ObjectId(taskIdStr) });
@@ -689,7 +694,10 @@ export const getTaskComments = async (
 
     // Ensure private: only owner can view
     if (!task.userId.equals(user._id))
-      return sendError(res, "Forbidden: You can only view your own task comments");
+      return sendError(
+        res,
+        "Forbidden: You can only view your own task comments"
+      );
 
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ comments: task.comments || [] }));
@@ -698,7 +706,6 @@ export const getTaskComments = async (
     sendError(res, "Server error");
   }
 };
-
 
 // GET TASKS CREATED BY THE LOGGED-IN USER
 export const getMyTasks = async (
