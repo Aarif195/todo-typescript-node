@@ -3,6 +3,7 @@ import { getDb } from "../db/mongo";
 import { ObjectId } from "mongodb";
 import { authenticate } from "./authMongoController";
 import { Todo, Reply, Comment } from "../types/todoMongo";
+
 // const db = getDb();
 // const tasksCollection = db.collection("tasks");
 
@@ -951,3 +952,201 @@ export async function likeReply(req: IncomingMessage, res: ServerResponse) {
     sendError(res, "Server error");
   }
 }
+
+// EDIT A COMMENT OR REPLY
+// EDIT A COMMENT OR REPLY
+export async function editCommentOrReply(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  try {
+    const user = await authenticate(req);
+    if (!user || !user._id) return sendError(res, "Unauthorized");
+
+    // Extract _id from URL
+    const urlParts = req.url?.split("/").filter(Boolean) || [];
+    const idStr = urlParts[urlParts.length - 1];
+    if (!ObjectId.isValid(idStr)) return sendError(res, "Invalid ID");
+    const targetId = new ObjectId(idStr);
+
+    // Get text from request body
+    let body: any = {};
+    req.on("data", (chunk) => (body = JSON.parse(chunk.toString())));
+    await new Promise((resolve) => req.on("end", resolve));
+    const newText = body.text?.trim();
+    if (!newText) return sendError(res, "Text is required");
+
+    const ownerId = new ObjectId(user._id);
+    const tasksCol = await getTasksCollection();
+
+    // Try to update COMMENT
+    const commentFilter = {
+      "comments._id": targetId,
+      "comments.userId": user._id.toString(),
+    };
+    let result = await tasksCol.findOneAndUpdate(
+      commentFilter,
+      {
+        $set: {
+          "comments.$.text": newText,
+          "comments.$.updatedAt": new Date().toISOString(),
+        },
+      },
+      { returnDocument: "after" }
+    );
+
+    if (result?.value) {
+      const updatedComment = result.value.comments.find(
+        (c: Comment) => c._id && c._id.toString() === targetId.toString()
+      );
+      res.end(
+        JSON.stringify({
+          message: "Comment updated successfully",
+          comment: updatedComment,
+        })
+      );
+    }
+
+    // Try to update REPLY
+    const replyFilter = {
+      "comments.replies._id": targetId,
+      "comments.replies.userId": ownerId,
+    };
+    result = await tasksCol.findOneAndUpdate(
+      replyFilter,
+      {
+        $set: {
+          "comments.$[c].replies.$[r].text": newText,
+          "comments.$[c].replies.$[r].updatedAt": new Date().toISOString(),
+        },
+      },
+      {
+        arrayFilters: [{ "c.replies._id": targetId }, { "r._id": targetId }],
+        returnDocument: "after",
+      }
+    );
+
+    if (result?.value) {
+      let updatedReply: Reply | undefined;
+      for (const c of result.value.comments) {
+        updatedReply = c.replies.find(
+          (r: Reply) => r._id && r._id.toString() === targetId.toString()
+        );
+        if (updatedReply) break;
+      }
+      res.end(
+        JSON.stringify({
+          message: "Reply updated successfully",
+          reply: updatedReply,
+        })
+      );
+    }
+
+    return sendError(res, "Comment or reply not found or forbidden to edit");
+  } catch (err) {
+    console.error(err);
+    return sendError(res, "Internal Server Error");
+  }
+}
+
+
+//  Delete a comment or reply (Assuming ALL IDs are ObjectId)
+//  Delete a comment or reply
+export async function deleteCommentOrReply(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  try {
+    const user = await authenticate(req);
+    if (!user || !user._id) return sendError(res, "Unauthorized");
+
+    // 1. Setup IDs and Target Type
+    const urlParts = req.url?.split("/").filter(Boolean) || [];
+    const idStr = urlParts[urlParts.length - 1];
+    if (!ObjectId.isValid(idStr)) return sendError(res, "Invalid ID");
+
+    const targetId = new ObjectId(idStr);
+    const ownerId = new ObjectId(user._id);
+    // Determine the target type based on URL structure
+    const isReply = urlParts.includes("replies");
+
+    const tasksCol = await getTasksCollection();
+
+    // 2. Conditional Deletion (Reply)
+    // --- ONLY REPLACE THE IF (isReply) BLOCK ---
+
+    // 2. Conditional Deletion (Reply)
+    if (isReply) {
+      // Find the document that CONTAINS the target reply (by ID and Owner)
+      const replyUpdateResult = await tasksCol.updateOne(
+        {
+          "comments.replies._id": targetId,
+          "comments.replies.userId": ownerId,
+        },
+        {
+          // CRITICAL FIX: Use the all positional operator ($[]) in the path to the replies array.
+          // This tells MongoDB to look inside ALL comments for the matching reply.
+          $pull: {
+            "comments.$[].replies": {
+              _id: targetId,
+              userId: ownerId,
+            } as any,
+          },
+        }
+      );
+
+      if (replyUpdateResult.modifiedCount > 0) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+         res.end(
+          JSON.stringify({ message: "Reply deleted successfully!" })
+        );
+      }
+      // Specific Error Message for Reply not found
+      return sendError(res, "Reply not found or forbidden to delete");
+    } 
+    
+// ---------------------------------------------
+    
+    // 3. Conditional Deletion (Comment)
+    else {
+      const commentUpdateResult = await tasksCol.updateOne(
+        {
+          // Filter tasks that contain the comment by ID AND owner
+          "comments._id": targetId,
+          "comments.userId": ownerId,
+        },
+        {
+          $pull: {
+            comments: {
+              _id: targetId,
+              userId: ownerId,
+            } as any, 
+          },
+        }
+      );
+
+      if (commentUpdateResult.modifiedCount > 0) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+         res.end(
+          JSON.stringify({ message: "Comment deleted successfully!" })
+        );
+      }
+      // Specific Error Message for Comment not found
+      return sendError(res, "Comment not found or forbidden to delete");
+    }
+
+  } catch (err) {
+    console.error(err);
+    // The Internal Server Error is handled here
+    return sendError(res, "Internal Server Error");
+  }
+}
+
+// NOTE: I've added an assumed structure to your sendError function below 
+// for demonstration, assuming it takes a status code.
+/*
+function sendError(res: ServerResponse, message: string, status = 400) {
+    res.writeHead(status, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ error: message }));
+}
+*/

@@ -14,7 +14,10 @@ import {
   replyTaskComment,
   getTaskComments,
   getMyTasks,
-  likeComment,likeReply
+  likeComment,
+  likeReply,
+  editCommentOrReply,
+  deleteCommentOrReply,
 } from "./controllers/tasksMongoController";
 
 const PORT = process.env.PORT || 8080;
@@ -33,10 +36,35 @@ const server = http.createServer((req, res) => {
     return register(req, res);
   }
 
+
+
   // Login
   if (url === "/api/login" && method === "POST") {
     return login(req, res);
   }
+
+ 
+
+  // Delete comment
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.includes("/comments/") &&
+    !url.includes("/replies") &&
+    req.method === "DELETE"
+  ) {
+    return deleteCommentOrReply(req, res);
+  }
+
+ // Delete reply
+  // else if (
+  //   url?.startsWith("/api/tasks/") &&
+  //   url.includes("/comments/") &&
+  //   url.includes("/replies/") &&
+  //   req.method === "DELETE"
+  // ) {
+  //   return deleteCommentOrReply(req, res);
+  // }
+
 
   // CREATE TASK
   else if (url === "/api/tasks" && method === "POST") {
@@ -94,6 +122,16 @@ const server = http.createServer((req, res) => {
     return postTaskComment(req, res);
   }
 
+   // Delete reply
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.includes("/comments/") &&
+    url.includes("/replies/") &&
+    req.method === "DELETE"
+  ) {
+    return deleteCommentOrReply(req, res);
+  }
+
   // reply to a comment
   else if (
     url?.startsWith("/api/tasks/comment/") &&
@@ -102,6 +140,8 @@ const server = http.createServer((req, res) => {
   ) {
     return replyTaskComment(req, res);
   }
+
+
 
   // LIKE/UNLIKE A COMMENT
   else if (
@@ -112,18 +152,33 @@ const server = http.createServer((req, res) => {
     return likeComment(req, res);
   }
 
+  // LIKE/UNLIKE A REPLY
+  if (
+    url?.startsWith("/api/tasks/") &&
+    url.includes("/replies/") &&
+    url.endsWith("/like") &&
+    method === "POST"
+  ) {
+    return likeReply(req, res);
+  }
 
-// LIKE/UNLIKE A REPLY
-if (
-  url?.startsWith("/api/tasks/") &&
-  url.includes("/replies/") &&
-  url.endsWith("/like") &&
-  method === "POST"
-) {
-  return likeReply(req, res);
-}
+  // 1. EDIT COMMENT
+  else if (
+    url?.startsWith("/api/tasks/comments/") &&
+    !url.includes("/replies") &&
+    req.method === "PATCH"
+  ) {
+    return editCommentOrReply(req, res);
+  }
 
-
+  // 2. EDIT REPLY
+  else if (
+    url?.startsWith("/api/tasks/comments/") &&
+    url.includes("/replies/") &&
+    req.method === "PATCH"
+  ) {
+    return editCommentOrReply(req, res);
+  }
 
   // DELETE TASK
   else if (url?.startsWith("/api/tasks/") && method === "DELETE") {
