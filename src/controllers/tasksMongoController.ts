@@ -954,7 +954,6 @@ export async function likeReply(req: IncomingMessage, res: ServerResponse) {
 }
 
 // EDIT A COMMENT OR REPLY
-// EDIT A COMMENT OR REPLY
 export async function editCommentOrReply(
   req: IncomingMessage,
   res: ServerResponse
@@ -1050,7 +1049,6 @@ export async function editCommentOrReply(
 }
 
 
-//  Delete a comment or reply (Assuming ALL IDs are ObjectId)
 //  Delete a comment or reply
 export async function deleteCommentOrReply(
   req: IncomingMessage,
@@ -1071,11 +1069,8 @@ export async function deleteCommentOrReply(
     const isReply = urlParts.includes("replies");
 
     const tasksCol = await getTasksCollection();
-
-    // 2. Conditional Deletion (Reply)
-    // --- ONLY REPLACE THE IF (isReply) BLOCK ---
-
-    // 2. Conditional Deletion (Reply)
+    
+    // Conditional Deletion (Reply)
     if (isReply) {
       // Find the document that CONTAINS the target reply (by ID and Owner)
       const replyUpdateResult = await tasksCol.updateOne(
@@ -1084,8 +1079,7 @@ export async function deleteCommentOrReply(
           "comments.replies.userId": ownerId,
         },
         {
-          // CRITICAL FIX: Use the all positional operator ($[]) in the path to the replies array.
-          // This tells MongoDB to look inside ALL comments for the matching reply.
+          
           $pull: {
             "comments.$[].replies": {
               _id: targetId,
@@ -1101,13 +1095,9 @@ export async function deleteCommentOrReply(
           JSON.stringify({ message: "Reply deleted successfully!" })
         );
       }
-      // Specific Error Message for Reply not found
-      return sendError(res, "Reply not found or forbidden to delete");
+      return sendError(res, "Reply not found");
     } 
-    
-// ---------------------------------------------
-    
-    // 3. Conditional Deletion (Comment)
+
     else {
       const commentUpdateResult = await tasksCol.updateOne(
         {
@@ -1131,22 +1121,12 @@ export async function deleteCommentOrReply(
           JSON.stringify({ message: "Comment deleted successfully!" })
         );
       }
-      // Specific Error Message for Comment not found
-      return sendError(res, "Comment not found or forbidden to delete");
+      return sendError(res, "Comment not found");
     }
 
   } catch (err) {
     console.error(err);
-    // The Internal Server Error is handled here
     return sendError(res, "Internal Server Error");
   }
 }
 
-// NOTE: I've added an assumed structure to your sendError function below 
-// for demonstration, assuming it takes a status code.
-/*
-function sendError(res: ServerResponse, message: string, status = 400) {
-    res.writeHead(status, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ error: message }));
-}
-*/
