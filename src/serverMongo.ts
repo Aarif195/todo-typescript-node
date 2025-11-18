@@ -16,7 +16,7 @@ import {
   getMyTasks,
   likeComment,
   likeReply,
-  editCommentOrReply,
+  editReply, editComment,
   deleteCommentOrReply,
 } from "./controllers/tasksMongoController";
 
@@ -31,21 +31,50 @@ const server = http.createServer((req, res) => {
 
   console.log("Incoming request:", req.url, req.method);
 
-  // Register
+  
   if (url === "/api/register" && method === "POST") {
     return register(req, res);
   }
-
-
-
-  // Login
   if (url === "/api/login" && method === "POST") {
     return login(req, res);
   }
+  if (url === "/api/user/my-tasks" && method === "GET") {
+    return getMyTasks(req, res);
+  }
 
  
+  
+  // DELETE REPLY (Most Specific DELETE)
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.includes("/comments/") &&
+    url.includes("/replies/") &&
+    req.method === "DELETE"
+  ) {
+    return deleteCommentOrReply(req, res);
+  }
+  
+  // EDIT REPLY 
+  else if (
+    url?.startsWith("/api/tasks/comments/") &&
+    url.includes("/replies/") &&
+    req.method === "PATCH"
+  ) {
+    return editReply(req, res);
+  }
+  
+  // LIKE/UNLIKE A REPLY
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.includes("/replies/") &&
+    url.endsWith("/like") &&
+    method === "POST"
+  ) {
+    return likeReply(req, res);
+  }
 
-  // Delete comment
+  
+  // DELETE COMMENT
   else if (
     url?.startsWith("/api/tasks/") &&
     url.includes("/comments/") &&
@@ -54,24 +83,44 @@ const server = http.createServer((req, res) => {
   ) {
     return deleteCommentOrReply(req, res);
   }
-
- // Delete reply
-  // else if (
-  //   url?.startsWith("/api/tasks/") &&
-  //   url.includes("/comments/") &&
-  //   url.includes("/replies/") &&
-  //   req.method === "DELETE"
-  // ) {
-  //   return deleteCommentOrReply(req, res);
-  // }
-
-
-  // CREATE TASK
-  else if (url === "/api/tasks" && method === "POST") {
-    return createTask(req, res);
+  
+  // EDIT COMMENT
+  else if (
+    url?.startsWith("/api/tasks/comments/") &&
+    !url.includes("/replies") &&
+    req.method === "PATCH"
+  ) {
+    return editComment(req, res);
   }
 
-  // get comment
+  // LIKE/UNLIKE A COMMENT
+  else if (
+    url?.startsWith("/api/tasks/comments/") &&
+    url.endsWith("/like") &&
+    method === "POST"
+  ) {
+    return likeComment(req, res);
+  }
+  
+  // REPLY TO A COMMENT
+  else if (
+    url?.startsWith("/api/tasks/comment/") &&
+    url?.endsWith("/reply") &&
+    method === "POST"
+  ) {
+    return replyTaskComment(req, res);
+  }
+
+  // POST COMMENT
+  else if (
+    url?.startsWith("/api/tasks/") &&
+    url.endsWith("/comments") &&
+    method === "POST"
+  ) {
+    return postTaskComment(req, res);
+  }
+
+  // GET ALL COMMENTS FOR A TASK
   else if (
     url?.startsWith("/api/tasks/") &&
     url.endsWith("/comments") &&
@@ -80,21 +129,7 @@ const server = http.createServer((req, res) => {
     return getTaskComments(req, res);
   }
 
-  // GET TASK BY ID
-  else if (url?.startsWith("/api/tasks/") && method === "GET") {
-    return getTaskById(req, res);
-  }
-
-  // GET TASKS
-  else if (url && url.startsWith("/api/tasks") && method === "GET") {
-    return getTasks(req, res);
-  }
-
-  // UPDATE TASK
-  else if (url?.startsWith("/api/tasks/") && method === "PUT") {
-    return updateTask(req, res);
-  }
-
+  
   // Mark task as completed
   else if (
     url?.startsWith("/api/tasks/") &&
@@ -113,78 +148,6 @@ const server = http.createServer((req, res) => {
     return toggleTaskCompletion(req, res);
   }
 
-  // POST COMMENT
-  else if (
-    url?.startsWith("/api/tasks/") &&
-    url.endsWith("/comments") &&
-    method === "POST"
-  ) {
-    return postTaskComment(req, res);
-  }
-
-   // Delete reply
-  else if (
-    url?.startsWith("/api/tasks/") &&
-    url.includes("/comments/") &&
-    url.includes("/replies/") &&
-    req.method === "DELETE"
-  ) {
-    return deleteCommentOrReply(req, res);
-  }
-
-  // reply to a comment
-  else if (
-    url?.startsWith("/api/tasks/comment/") &&
-    url?.endsWith("/reply") &&
-    method === "POST"
-  ) {
-    return replyTaskComment(req, res);
-  }
-
-
-
-  // LIKE/UNLIKE A COMMENT
-  else if (
-    url?.startsWith("/api/tasks/comments/") &&
-    url.endsWith("/like") &&
-    method === "POST"
-  ) {
-    return likeComment(req, res);
-  }
-
-  // LIKE/UNLIKE A REPLY
-  if (
-    url?.startsWith("/api/tasks/") &&
-    url.includes("/replies/") &&
-    url.endsWith("/like") &&
-    method === "POST"
-  ) {
-    return likeReply(req, res);
-  }
-
-  // 1. EDIT COMMENT
-  else if (
-    url?.startsWith("/api/tasks/comments/") &&
-    !url.includes("/replies") &&
-    req.method === "PATCH"
-  ) {
-    return editCommentOrReply(req, res);
-  }
-
-  // 2. EDIT REPLY
-  else if (
-    url?.startsWith("/api/tasks/comments/") &&
-    url.includes("/replies/") &&
-    req.method === "PATCH"
-  ) {
-    return editCommentOrReply(req, res);
-  }
-
-  // DELETE TASK
-  else if (url?.startsWith("/api/tasks/") && method === "DELETE") {
-    return deleteTask(req, res);
-  }
-
   // LIKE TASK
   else if (
     url?.startsWith("/api/tasks/") &&
@@ -194,10 +157,39 @@ const server = http.createServer((req, res) => {
     return likeTask(req, res);
   }
 
-  // USER'S TASK
-  else if (url === "/api/user/my-tasks" && method === "GET") {
-    getMyTasks(req, res);
+  
+  // CREATE TASK
+  else if (url === "/api/tasks" && method === "POST") {
+    return createTask(req, res);
   }
+
+  // DELETE TASK
+  else if (url?.startsWith("/api/tasks/") && method === "DELETE") {
+    return deleteTask(req, res);
+  }
+
+  // UPDATE TASK
+  else if (url?.startsWith("/api/tasks/") && method === "PUT") {
+    return updateTask(req, res);
+  }
+
+  // GET TASK BY ID 
+  else if (url?.startsWith("/api/tasks/") && method === "GET") {
+    return getTaskById(req, res);
+  }
+
+  // GET TASKS (Most Generic Task GET)
+  else if (url && url.startsWith("/api/tasks") && method === "GET") {
+    return getTasks(req, res);
+  }
+
+  // 404 Handler 
+  else {
+  res.writeHead(404, { "Content-Type": "application/json" });
+res.end(JSON.stringify({ message: "Endpoint not found" }));
+}
+
+
 });
 
 connectToMongo().then(() => {

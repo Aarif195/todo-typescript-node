@@ -74,7 +74,7 @@ export const createTask = async (
       if (typeof completed !== "boolean")
         return sendError(res, "Completed must be boolean");
 
-      const tasksCol = getTasksCollection(); // MongoDB collection
+      const tasksCol = getTasksCollection(); 
 
       const newTask: Todo = {
         title: title.trim(),
@@ -110,7 +110,7 @@ export const getTasks = async (
   res: ServerResponse
 ): Promise<void> => {
   try {
-    const tasksCol = getTasksCollection(); // MongoDB collection for Todo
+    const tasksCol = getTasksCollection(); 
 
     // Fetch all tasks
     const tasksArray = (await tasksCol.find({}).toArray()) as Todo[];
@@ -539,7 +539,7 @@ export const postTaskComment = async (
     if (!user) return sendError(res, "Unauthorized");
 
     const urlParts = req.url?.split("/") || [];
-    const taskIdStr = urlParts[urlParts.length - 2]; // assuming /tasks/:id/comment
+    const taskIdStr = urlParts[urlParts.length - 2]; 
 
     if (!ObjectId.isValid(taskIdStr)) return sendError(res, "Invalid task ID");
     const taskId = new ObjectId(taskIdStr);
@@ -610,7 +610,7 @@ export const replyTaskComment = async (
     if (!user) return sendError(res, "Unauthorized");
 
     const urlParts = req.url?.split("/") || [];
-    const commentIdStr = urlParts[urlParts.length - 2]; // Assuming endpoint: /api/tasks/comment/:commentId/reply
+    const commentIdStr = urlParts[urlParts.length - 2]; 
 
     if (!ObjectId.isValid(commentIdStr))
       return sendError(res, "Invalid comment ID");
@@ -953,42 +953,60 @@ export async function likeReply(req: IncomingMessage, res: ServerResponse) {
   }
 }
 
-// EDIT A COMMENT OR REPLY
-export async function editCommentOrReply(
+// EDIT A COMMENT
+export async function editComment(
   req: IncomingMessage,
   res: ServerResponse
 ): Promise<void> {
+  let body = "";
+  await new Promise<void>((resolve, reject) => {
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+    req.on("end", () => {
+      resolve();
+    });
+    req.on("error", reject);
+  });
+
   try {
     const user = await authenticate(req);
     if (!user || !user._id) return sendError(res, "Unauthorized");
 
-    // Extract _id from URL
-    const urlParts = req.url?.split("/").filter(Boolean) || [];
-    const idStr = urlParts[urlParts.length - 1];
-    if (!ObjectId.isValid(idStr)) return sendError(res, "Invalid ID");
-    const targetId = new ObjectId(idStr);
+    let parsedBody: { text?: string };
+    try {
+      parsedBody = JSON.parse(body || "{}");
+    } catch {
+      return sendError(res, "Invalid JSON body");
+    }
 
-    // Get text from request body
-    let body: any = {};
-    req.on("data", (chunk) => (body = JSON.parse(chunk.toString())));
-    await new Promise((resolve) => req.on("end", resolve));
-    const newText = body.text?.trim();
+    const newText = parsedBody.text?.trim();
     if (!newText) return sendError(res, "Text is required");
 
-    const ownerId = new ObjectId(user._id);
-    const tasksCol = await getTasksCollection();
+    // 1. Setup IDs
+    const urlParts = req.url?.split("/").filter(Boolean) || [];
+    // ID is the last segment: /api/tasks/comments/:commentId
+    const idStr = urlParts[urlParts.length - 1]; 
+    if (!ObjectId.isValid(idStr)) return sendError(res, "Invalid Comment ID");
 
-    // Try to update COMMENT
-    const commentFilter = {
+    const targetId = new ObjectId(idStr);
+    const ownerId = new ObjectId(user._id); 
+
+    // Database Logic 
+    const tasksCol = await getTasksCollection();
+    const updateTime = new Date().toISOString();
+
+    const filter = {
       "comments._id": targetId,
-      "comments.userId": user._id.toString(),
+      "comments.userId": ownerId, 
     };
-    let result = await tasksCol.findOneAndUpdate(
-      commentFilter,
+
+    const result = await tasksCol.findOneAndUpdate(
+      filter,
       {
         $set: {
           "comments.$.text": newText,
-          "comments.$.updatedAt": new Date().toISOString(),
+          "comments.$.updatedAt": updateTime,
         },
       },
       { returnDocument: "after" }
@@ -996,58 +1014,121 @@ export async function editCommentOrReply(
 
     if (result?.value) {
       const updatedComment = result.value.comments.find(
-        (c: Comment) => c._id && c._id.toString() === targetId.toString()
+        (c: any) => c._id && c._id.equals(targetId)
       );
+      res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
           message: "Comment updated successfully",
           comment: updatedComment,
         })
       );
+      return;
     }
 
-    // Try to update REPLY
-    const replyFilter = {
-      "comments.replies._id": targetId,
-      "comments.replies.userId": ownerId,
-    };
-    result = await tasksCol.findOneAndUpdate(
-      replyFilter,
-      {
-        $set: {
-          "comments.$[c].replies.$[r].text": newText,
-          "comments.$[c].replies.$[r].updatedAt": new Date().toISOString(),
-        },
-      },
-      {
-        arrayFilters: [{ "c.replies._id": targetId }, { "r._id": targetId }],
-        returnDocument: "after",
-      }
-    );
+    return sendError(res, "Comment not found");
 
-    if (result?.value) {
-      let updatedReply: Reply | undefined;
-      for (const c of result.value.comments) {
-        updatedReply = c.replies.find(
-          (r: Reply) => r._id && r._id.toString() === targetId.toString()
-        );
-        if (updatedReply) break;
-      }
-      res.end(
-        JSON.stringify({
-          message: "Reply updated successfully",
-          reply: updatedReply,
-        })
-      );
-    }
-
-    return sendError(res, "Comment or reply not found or forbidden to edit");
   } catch (err) {
     console.error(err);
     return sendError(res, "Internal Server Error");
   }
 }
 
+// EDIT A REPLY
+export async function editReply(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  let body = "";
+  await new Promise<void>((resolve, reject) => {
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+    req.on("end", () => {
+      resolve();
+    });
+    req.on("error", reject);
+  });
+
+  try {
+    const user = await authenticate(req);
+    if (!user || !user._id) return sendError(res, "Unauthorized");
+
+    let parsedBody: { text?: string };
+    try {
+      parsedBody = JSON.parse(body || "{}");
+    } catch {
+      return sendError(res, "Invalid JSON body");
+    }
+
+    const newText = parsedBody.text?.trim();
+    if (!newText) return sendError(res, "Text is required");
+
+    const urlParts = req.url?.split("/").filter(Boolean) || [];
+    const idStr = urlParts[urlParts.length - 1]; 
+    if (!ObjectId.isValid(idStr)) return sendError(res, "Invalid Reply ID");
+
+    const targetId = new ObjectId(idStr);
+    const ownerId = new ObjectId(user._id);
+
+    //  Database Logic 
+    const tasksCol = await getTasksCollection();
+    const updateTime = new Date().toISOString();
+
+    //  finds the Task that contains the matching reply 
+    const filter = {
+      "comments.replies._id": targetId,
+      "comments.replies.userId": ownerId,
+    };
+    
+    // Array Filters specify which nested elements to target
+    const arrayFilters = [
+      { "c.replies._id": targetId }, 
+      { "r._id": targetId, "r.userId": ownerId }, 
+    ];
+    
+    const result = await tasksCol.findOneAndUpdate(
+      filter,
+      {
+        $set: {
+       
+          "comments.$[c].replies.$[r].text": newText,
+          "comments.$[c].replies.$[r].updatedAt": updateTime,
+        },
+      },
+      {
+        arrayFilters: arrayFilters,
+        returnDocument: "after",
+      }
+    );
+
+    if (result?.value) {
+      // Manually find the updated reply in the returned document
+      let updatedReply: any;
+      for (const c of result.value.comments) {
+        updatedReply = c.replies.find(
+          (r: any) => r._id && r._id.equals(targetId)
+        );
+        if (updatedReply) break;
+      }
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          message: "Reply updated successfully",
+          reply: updatedReply,
+        })
+      );
+      return;
+    }
+
+    return sendError(res, "Reply not found");
+    
+  } catch (err) {
+    console.error(err);
+    return sendError(res, "Internal Server Error");
+  }
+}
 
 //  Delete a comment or reply
 export async function deleteCommentOrReply(
