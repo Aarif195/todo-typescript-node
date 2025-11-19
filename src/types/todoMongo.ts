@@ -17,7 +17,7 @@ export type Todo = {
 };
 
 export type Reply = {
-  _id?: ObjectId; // Mongo-generated ID
+  _id?: ObjectId; 
   userId: ObjectId; // reference to User._id
   username: string;
   text: string;
@@ -26,7 +26,7 @@ export type Reply = {
 
 export type Comment = {
   _id?: ObjectId; // Mongo-generated ID
-  userId: ObjectId; // reference to User._id
+  userId: ObjectId; 
   username: string;
   text: string;
   createdAt: string;

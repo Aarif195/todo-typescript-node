@@ -4,9 +4,6 @@ import { ObjectId } from "mongodb";
 import { authenticate } from "./authMongoController";
 import { Todo, Reply, Comment } from "../types/todoMongo";
 
-// const db = getDb();
-// const tasksCollection = db.collection("tasks");
-
 // Allowed values for tasks
 const allowedPriorities = ["low", "medium", "high"];
 const allowedStatuses = ["pending", "in-progress", "completed"];
@@ -74,7 +71,7 @@ export const createTask = async (
       if (typeof completed !== "boolean")
         return sendError(res, "Completed must be boolean");
 
-      const tasksCol = getTasksCollection(); 
+      const tasksCol = getTasksCollection();
 
       const newTask: Todo = {
         title: title.trim(),
@@ -110,7 +107,7 @@ export const getTasks = async (
   res: ServerResponse
 ): Promise<void> => {
   try {
-    const tasksCol = getTasksCollection(); 
+    const tasksCol = getTasksCollection();
 
     // Fetch all tasks
     const tasksArray = (await tasksCol.find({}).toArray()) as Todo[];
@@ -486,6 +483,17 @@ export const likeTask = async (
       return;
     }
 
+    // Check ownership
+    if (!task.userId.equals(user._id)) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          message: "Forbidden: You can only like your own tasks",
+        })
+      );
+      return;
+    }
+
     // Toggle like
     let message = "";
     let liked = false;
@@ -539,7 +547,7 @@ export const postTaskComment = async (
     if (!user) return sendError(res, "Unauthorized");
 
     const urlParts = req.url?.split("/") || [];
-    const taskIdStr = urlParts[urlParts.length - 2]; 
+    const taskIdStr = urlParts[urlParts.length - 2];
 
     if (!ObjectId.isValid(taskIdStr)) return sendError(res, "Invalid task ID");
     const taskId = new ObjectId(taskIdStr);
@@ -558,8 +566,16 @@ export const postTaskComment = async (
         return sendError(res, "Comment cannot be empty");
 
       const tasksCol = getTasksCollection();
+
       const task = await tasksCol.findOne({ _id: taskId });
       if (!task) return sendError(res, "Task not found");
+
+      if (!task.userId.equals(user._id)) {
+        return sendError(
+          res,
+          "Forbidden: Only the task owner can add comments."
+        );
+      }
 
       // Prepare comment object
       const newComment: Comment = {
@@ -610,7 +626,7 @@ export const replyTaskComment = async (
     if (!user) return sendError(res, "Unauthorized");
 
     const urlParts = req.url?.split("/") || [];
-    const commentIdStr = urlParts[urlParts.length - 2]; 
+    const commentIdStr = urlParts[urlParts.length - 2];
 
     if (!ObjectId.isValid(commentIdStr))
       return sendError(res, "Invalid comment ID");
@@ -641,9 +657,12 @@ export const replyTaskComment = async (
 
       if (!task) return sendError(res, "Comment not found");
 
-      // Ensure only the task owner can reply (private)
-      if (!task.userId.equals(user._id))
-        return sendError(res, "Forbidden: Private task");
+      if (!task.userId.equals(user._id)) {
+        return sendError(
+          res,
+          "Forbidden: Only the task owner can reply to this comment."
+        );
+      }
 
       const reply: Reply = {
         _id: new ObjectId(),
@@ -692,12 +711,14 @@ export const getTaskComments = async (
 
     if (!task) return sendError(res, "Task not found");
 
-    // Ensure private: only owner can view
-    if (!task.userId.equals(user._id))
+    // User checking
+
+    if (!task.userId.equals(user._id)) {
       return sendError(
         res,
-        "Forbidden: You can only view your own task comments"
+        "Forbidden: You can only view your own task comments."
       );
+    }
 
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ comments: task.comments || [] }));
@@ -814,6 +835,10 @@ export const likeComment = async (
     });
     if (!task) return sendError(res, "Comment not found");
 
+    if (!task.userId.equals(user._id)) {
+      return sendError(res, "Forbidden: Only the task owner can like comment");
+    }
+
     const comment = task.comments.find((c: Comment) =>
       c._id?.equals(new ObjectId(commentIdStr))
     );
@@ -887,6 +912,13 @@ export async function likeReply(req: IncomingMessage, res: ServerResponse) {
     });
     if (!task) return sendError(res, "Reply not found");
 
+    if (!task.userId.equals(user._id)) {
+      return sendError(
+        res,
+        "Forbidden: Only the task owner can like reply's comment."
+      );
+    }
+
     // Find the specific comment containing the reply
     const comment = task.comments.find((c: Comment) =>
       c.replies.some((r: Reply) => r._id?.equals(new ObjectId(replyIdStr)))
@@ -953,183 +985,6 @@ export async function likeReply(req: IncomingMessage, res: ServerResponse) {
   }
 }
 
-// EDIT A COMMENT
-export async function editComment(
-  req: IncomingMessage,
-  res: ServerResponse
-): Promise<void> {
-  let body = "";
-  await new Promise<void>((resolve, reject) => {
-    req.on("data", (chunk) => {
-      body += chunk.toString();
-    });
-    req.on("end", () => {
-      resolve();
-    });
-    req.on("error", reject);
-  });
-
-  try {
-    const user = await authenticate(req);
-    if (!user || !user._id) return sendError(res, "Unauthorized");
-
-    let parsedBody: { text?: string };
-    try {
-      parsedBody = JSON.parse(body || "{}");
-    } catch {
-      return sendError(res, "Invalid JSON body");
-    }
-
-    const newText = parsedBody.text?.trim();
-    if (!newText) return sendError(res, "Text is required");
-
-    // 1. Setup IDs
-    const urlParts = req.url?.split("/").filter(Boolean) || [];
-    // ID is the last segment: /api/tasks/comments/:commentId
-    const idStr = urlParts[urlParts.length - 1]; 
-    if (!ObjectId.isValid(idStr)) return sendError(res, "Invalid Comment ID");
-
-    const targetId = new ObjectId(idStr);
-    const ownerId = new ObjectId(user._id); 
-
-    // Database Logic 
-    const tasksCol = await getTasksCollection();
-    const updateTime = new Date().toISOString();
-
-    const filter = {
-      "comments._id": targetId,
-      "comments.userId": ownerId, 
-    };
-
-    const result = await tasksCol.findOneAndUpdate(
-      filter,
-      {
-        $set: {
-          "comments.$.text": newText,
-          "comments.$.updatedAt": updateTime,
-        },
-      },
-      { returnDocument: "after" }
-    );
-
-    if (result?.value) {
-      const updatedComment = result.value.comments.find(
-        (c: any) => c._id && c._id.equals(targetId)
-      );
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          message: "Comment updated successfully",
-          comment: updatedComment,
-        })
-      );
-      return;
-    }
-
-    return sendError(res, "Comment not found");
-
-  } catch (err) {
-    console.error(err);
-    return sendError(res, "Internal Server Error");
-  }
-}
-
-// EDIT A REPLY
-export async function editReply(
-  req: IncomingMessage,
-  res: ServerResponse
-): Promise<void> {
-  let body = "";
-  await new Promise<void>((resolve, reject) => {
-    req.on("data", (chunk) => {
-      body += chunk.toString();
-    });
-    req.on("end", () => {
-      resolve();
-    });
-    req.on("error", reject);
-  });
-
-  try {
-    const user = await authenticate(req);
-    if (!user || !user._id) return sendError(res, "Unauthorized");
-
-    let parsedBody: { text?: string };
-    try {
-      parsedBody = JSON.parse(body || "{}");
-    } catch {
-      return sendError(res, "Invalid JSON body");
-    }
-
-    const newText = parsedBody.text?.trim();
-    if (!newText) return sendError(res, "Text is required");
-
-    const urlParts = req.url?.split("/").filter(Boolean) || [];
-    const idStr = urlParts[urlParts.length - 1]; 
-    if (!ObjectId.isValid(idStr)) return sendError(res, "Invalid Reply ID");
-
-    const targetId = new ObjectId(idStr);
-    const ownerId = new ObjectId(user._id);
-
-    //  Database Logic 
-    const tasksCol = await getTasksCollection();
-    const updateTime = new Date().toISOString();
-
-    //  finds the Task that contains the matching reply 
-    const filter = {
-      "comments.replies._id": targetId,
-      "comments.replies.userId": ownerId,
-    };
-    
-    // Array Filters specify which nested elements to target
-    const arrayFilters = [
-      { "c.replies._id": targetId }, 
-      { "r._id": targetId, "r.userId": ownerId }, 
-    ];
-    
-    const result = await tasksCol.findOneAndUpdate(
-      filter,
-      {
-        $set: {
-       
-          "comments.$[c].replies.$[r].text": newText,
-          "comments.$[c].replies.$[r].updatedAt": updateTime,
-        },
-      },
-      {
-        arrayFilters: arrayFilters,
-        returnDocument: "after",
-      }
-    );
-
-    if (result?.value) {
-      // Manually find the updated reply in the returned document
-      let updatedReply: any;
-      for (const c of result.value.comments) {
-        updatedReply = c.replies.find(
-          (r: any) => r._id && r._id.equals(targetId)
-        );
-        if (updatedReply) break;
-      }
-
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          message: "Reply updated successfully",
-          reply: updatedReply,
-        })
-      );
-      return;
-    }
-
-    return sendError(res, "Reply not found");
-    
-  } catch (err) {
-    console.error(err);
-    return sendError(res, "Internal Server Error");
-  }
-}
-
 //  Delete a comment or reply
 export async function deleteCommentOrReply(
   req: IncomingMessage,
@@ -1139,28 +994,43 @@ export async function deleteCommentOrReply(
     const user = await authenticate(req);
     if (!user || !user._id) return sendError(res, "Unauthorized");
 
-    // 1. Setup IDs and Target Type
     const urlParts = req.url?.split("/").filter(Boolean) || [];
     const idStr = urlParts[urlParts.length - 1];
     if (!ObjectId.isValid(idStr)) return sendError(res, "Invalid ID");
 
     const targetId = new ObjectId(idStr);
     const ownerId = new ObjectId(user._id);
-    // Determine the target type based on URL structure
     const isReply = urlParts.includes("replies");
 
     const tasksCol = await getTasksCollection();
-    
-    // Conditional Deletion (Reply)
+
+    // Determine the query to find the parent task based on whether it's a comment or reply ID
+    const taskFindQuery = isReply
+      ? { "comments.replies._id": targetId }
+      : { "comments._id": targetId };
+
+    const task = await tasksCol.findOne(taskFindQuery, {
+      projection: { userId: 1 },
+    });
+
+    if (!task)
+      return sendError(res, isReply ? "Reply not found" : "Comment not found");
+
+    // Only the task owner can delete comments/replies on their task.
+    if (!task.userId.equals(user._id)) {
+      const type = isReply ? "replies" : "comments";
+      const errorMessage = `Forbidden: Only the task owner can delete ${type} on this task.`;
+      return sendError(res, errorMessage);
+    }
+
+    // (Reply)
     if (isReply) {
-      // Find the document that CONTAINS the target reply (by ID and Owner)
       const replyUpdateResult = await tasksCol.updateOne(
         {
           "comments.replies._id": targetId,
           "comments.replies.userId": ownerId,
         },
         {
-          
           $pull: {
             "comments.$[].replies": {
               _id: targetId,
@@ -1171,18 +1041,14 @@ export async function deleteCommentOrReply(
       );
 
       if (replyUpdateResult.modifiedCount > 0) {
-        res.writeHead(200, { "Content-Type": "application/json" });
-         res.end(
-          JSON.stringify({ message: "Reply deleted successfully!" })
-        );
+        res.writeHead(204, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ message: "Reply deleted successfully!" }));
       }
-      return sendError(res, "Reply not found");
-    } 
-
-    else {
+      return sendError(res, "Reply not found or forbidden to delete");
+    } else {
+      // Conditional Deletion (Comment)
       const commentUpdateResult = await tasksCol.updateOne(
         {
-          // Filter tasks that contain the comment by ID AND owner
           "comments._id": targetId,
           "comments.userId": ownerId,
         },
@@ -1191,23 +1057,19 @@ export async function deleteCommentOrReply(
             comments: {
               _id: targetId,
               userId: ownerId,
-            } as any, 
+            } as any,
           },
         }
       );
 
       if (commentUpdateResult.modifiedCount > 0) {
-        res.writeHead(200, { "Content-Type": "application/json" });
-         res.end(
-          JSON.stringify({ message: "Comment deleted successfully!" })
-        );
+        res.writeHead(204, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ message: "Comment deleted successfully!" }));
       }
-      return sendError(res, "Comment not found");
+      return sendError(res, "Comment not found or forbidden to delete");
     }
-
   } catch (err) {
     console.error(err);
     return sendError(res, "Internal Server Error");
   }
 }
-

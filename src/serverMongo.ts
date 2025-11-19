@@ -16,7 +16,6 @@ import {
   getMyTasks,
   likeComment,
   likeReply,
-  editReply, editComment,
   deleteCommentOrReply,
 } from "./controllers/tasksMongoController";
 
@@ -44,7 +43,7 @@ const server = http.createServer((req, res) => {
 
  
   
-  // DELETE REPLY (Most Specific DELETE)
+  // DELETE REPLY
   else if (
     url?.startsWith("/api/tasks/") &&
     url.includes("/comments/") &&
@@ -54,14 +53,6 @@ const server = http.createServer((req, res) => {
     return deleteCommentOrReply(req, res);
   }
   
-  // EDIT REPLY 
-  else if (
-    url?.startsWith("/api/tasks/comments/") &&
-    url.includes("/replies/") &&
-    req.method === "PATCH"
-  ) {
-    return editReply(req, res);
-  }
   
   // LIKE/UNLIKE A REPLY
   else if (
@@ -84,15 +75,7 @@ const server = http.createServer((req, res) => {
     return deleteCommentOrReply(req, res);
   }
   
-  // EDIT COMMENT
-  else if (
-    url?.startsWith("/api/tasks/comments/") &&
-    !url.includes("/replies") &&
-    req.method === "PATCH"
-  ) {
-    return editComment(req, res);
-  }
-
+ 
   // LIKE/UNLIKE A COMMENT
   else if (
     url?.startsWith("/api/tasks/comments/") &&
