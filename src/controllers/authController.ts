@@ -1,164 +1,167 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { User } from "../types/user";
 import { IncomingMessage, ServerResponse } from "http";
+import { getDb } from "../db/mongo";
+import { ObjectId } from "mongodb";
+import { sendError } from "./tasksController";
 
 const file = path.join(__dirname, "../users.json");
 console.log("Current file path:", file);
-
-if (!fs.existsSync(file)) {
-    fs.writeFileSync(file, "[]");
-}
-
-// Read and write helpers
-function readUsers(): User[] {
-  if (!fs.existsSync(file)) fs.writeFileSync(file, "[]");
-  const data = fs.readFileSync(file, "utf8");
-  return JSON.parse(data) as User[];
-}
-
-function writeUsers(users: User[]): void {
-    //   console.log("Writing users:", users);
-  fs.writeFileSync(file, JSON.stringify(users, null, 2));
-}
 
 // Password hashing
 export function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");
 }
 
-// REGISTER USER
-export function register(req: IncomingMessage, res: ServerResponse): void {
+function getUsersCollection() {
+  const db = getDb();
+  return db.collection<User>("users"); // MongoDB collection is named "users"
+}
+
+interface User {
+  _id?: ObjectId;
+  username: string;
+  email: string;
+  password: string;
+}
+
+// REGISTER
+export async function register(req: IncomingMessage, res: ServerResponse) {
   let body = "";
   req.on("data", (chunk) => {
     body += chunk.toString();
   });
 
-  req.on("end", () => {
-    const { username, email, password }: { username: string; email: string; password: string } = JSON.parse(body);
+  req.on("end", async () => {
+    try {
+      const {
+        username,
+        email,
+        password,
+      }: { username: string; email: string; password: string } =
+        JSON.parse(body);
 
-    // Basic validation
-    if (!username || !email || !password) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "All fields are required" }));
+      // Validation
+      if (!username || !email || !password)
+        return sendError(res, "All fields are required");
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email))
+        return sendError(res, "Invalid email format");
+
+      const passwordRegex =
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/;
+      if (!passwordRegex.test(password))
+        return sendError(
+          res,
+          "Password must be at least 8 characters and include uppercase, lowercase, number, and special character"
+        );
+
+      const usersCol = getUsersCollection();
+
+      // Unique email check
+      if (await usersCol.findOne({ email }))
+        return sendError(res, "Email already exists");
+
+      // Unique username check
+      if (await usersCol.findOne({ username }))
+        return sendError(res, "Username already exists");
+
+      // Create new user
+      const newUser: User = {
+        username,
+        email,
+        password: hashPassword(password),
+      };
+
+      const result = await usersCol.insertOne(newUser);
+      console.log("User successfully inserted with ID:", result.insertedId);
+      console.log("New user details:", newUser);
+
+      res.writeHead(201, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          message: "User registered successfully",
+          user: {
+            id: result.insertedId.toString(),
+            username: newUser.username,
+            email: newUser.email,
+          },
+        })
+      );
+    } catch (err) {
+      console.error(err);
+      sendError(res, "Server error");
     }
-
-    // Email format validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Invalid email format" }));
-    }
-
-    // Password strength validation
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/;
-    if (!passwordRegex.test(password)) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({
-        message: "Password must be at least 8 characters long and include uppercase, lowercase, number, and special character"
-      }));
-    }
-
-    const users = readUsers();
-
-    // Unique email check
-    if (users.find(u => u.email === email)) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Email already exists" }));
-    }
-
-    // Unique username check
-    if (users.find(u => u.username === username)) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Username already exists" }));
-    }
-
-    const newUser: User = {
-      id: users.length ? users[users.length - 1].id + 1 : 1,
-      username,
-      email,
-      password: hashPassword(password),
-    };
-
-    users.push(newUser);
-    writeUsers(users);
-
-    res.writeHead(201, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "User registered successfully" }));
   });
 }
 
-// LOGIN USER
-export function login(req: IncomingMessage, res: ServerResponse): void {
+// LOGIN
+export async function login(req: IncomingMessage, res: ServerResponse) {
   let body = "";
   req.on("data", (chunk) => {
     body += chunk.toString();
   });
 
-  req.on("end", () => {
-    const { email, password }: { email: string; password: string } = JSON.parse(body);
+  req.on("end", async () => {
+    try {
+      const { email, password }: { email: string; password: string } =
+        JSON.parse(body);
 
-    // Validate required fields
-    if (!email || !password) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Email and password are required" }));
+      // Validate required fields
+      if (!email || !password)
+        return sendError(res, "Email and password are required");
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email))
+        return sendError(res, "Invalid email format");
+
+      const usersCol = getUsersCollection();
+
+      // Find user by email
+      const user = await usersCol.findOne({ email });
+
+      if (!user || user.password !== hashPassword(password)) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ message: "Invalid credentials" }));
+      }
+
+      // Generate a new token for current login
+      const token = crypto.randomBytes(24).toString("hex");
+
+      // Update token in MongoDB
+      await usersCol.updateMany({}, { $unset: { token: "" } }); // remove old tokens
+      await usersCol.updateOne({ _id: user._id }, { $set: { token } }); // set new token for current user
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          message: "Login successful",
+          token,
+          user: { id: user._id, username: user.username, email: user.email },
+        })
+      );
+    } catch (err) {
+      console.error(err);
+      sendError(res, "Server error");
     }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Invalid email format" }));
-    }
-
-    const users = readUsers();
-
-    // Check if user exists
-    const user: User | undefined = users.find(
-      (u) => u.email === email && u.password === hashPassword(password)
-    );
-
-    if (!user) {
-      res.writeHead(401, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Invalid credentials" }));
-    }
-
-    // Generate a new token for current login
-    const token = crypto.randomBytes(24).toString("hex");
-
-    // Overwrite all other users' tokens
-    users.forEach((u) => {
-      u.token = u.id === user.id ? token : undefined;
-    });
-
-    // Save users back to file
-    writeUsers(users);
-
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({
-      message: "Login successful",
-      token,
-      user: { id: user.id, username: user.username, email: user.email }
-    }));
   });
 }
 
 // AUTHENTICATION
-export function authenticate(req: IncomingMessage): User | null {
-    const authHeader = req.headers["authorization"];
-    if (!authHeader) return null;
+export async function authenticate(req: IncomingMessage) {
+  const authHeader = req.headers["authorization"];
+  if (!authHeader) return null;
 
-    const parts = authHeader.trim().split(/\s+/);
-    if (parts.length !== 2 || parts[0] !== "Bearer") return null;
+  const parts = authHeader.trim().split(/\s+/);
+  if (parts.length !== 2 || parts[0] !== "Bearer") return null;
 
-    const token = parts[1];
+  const token = parts[1];
 
-    // Load users
-    const users: User[] = JSON.parse(fs.readFileSync(file, "utf8"));
-    const user = users.find(u => u.token === token);
+  const usersCol = getUsersCollection(); // MongoDB
+  const user = await usersCol.findOne({ token });
 
-    return user || null;
+  return user || null;
 }
-
-

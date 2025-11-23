@@ -1,7 +1,5 @@
 import http from "http";
-
-
-
+import { connectToMongo } from "./db/mongo";
 import { register, login } from "./controllers/authController";
 import {
   createTask,
@@ -17,18 +15,14 @@ import {
   getMyTasks,
   likeComment,
   likeReply,
-  editCommentOrReply,
   deleteCommentOrReply,
 } from "./controllers/tasksController";
 
-
 const PORT = process.env.PORT || 8080;
-
 
 const server = http.createServer((req, res) => {
   const url = req.url;
   const method = req.method;
-
 
   // Register
   if (url === "/api/register" && method === "POST") {
@@ -62,24 +56,24 @@ const server = http.createServer((req, res) => {
   }
 
   // 1. EDIT COMMENT
-  else if (
-    url?.startsWith("/api/tasks/") &&
-    url.includes("/comments/") &&
-    !url.includes("/replies") &&
-    req.method === "PATCH"
-  ) {
-    return editCommentOrReply(req, res);
-  }
+  // else if (
+  //   url?.startsWith("/api/tasks/") &&
+  //   url.includes("/comments/") &&
+  //   !url.includes("/replies") &&
+  //   req.method === "PATCH"
+  // ) {
+  //   return editCommentOrReply(req, res);
+  // }
 
   // 2. EDIT REPLY
-  else if (
-    url?.startsWith("/api/tasks/") &&
-    url.includes("/comments/") &&
-    url.includes("/replies/") &&
-    req.method === "PATCH"
-  ) {
-    return editCommentOrReply(req, res);
-  }
+  // else if (
+  //   url?.startsWith("/api/tasks/") &&
+  //   url.includes("/comments/") &&
+  //   url.includes("/replies/") &&
+  //   req.method === "PATCH"
+  // ) {
+  //   return editCommentOrReply(req, res);
+  // }
 
   // Delete comment
   else if (
@@ -188,11 +182,20 @@ const server = http.createServer((req, res) => {
   else if (url === "/api/user/my-tasks" && method === "GET") {
     getMyTasks(req, res);
   }
+
+    // 404 Handler 
+  else {
+  res.writeHead(404, { "Content-Type": "application/json" });
+res.end(JSON.stringify({ message: "Endpoint not found" }));
+}
+
 });
 
 
 
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT} `);
+connectToMongo().then(() => {
+  server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
 });

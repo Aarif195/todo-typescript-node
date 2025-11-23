@@ -1,2 +1,9 @@
 .env
 node_modules
+ServerMongo.ts
+tasksMongoController.ts
+authMongoController.ts
+todo.ts
+tasks.json
+users.json
+user.ts

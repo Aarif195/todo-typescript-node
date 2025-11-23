@@ -1,23 +1,8 @@
 import { IncomingMessage, ServerResponse } from "http";
-import fs from "fs";
-import path from "path";
-import { Todo, Comment, Reply } from "../types/todo";
-import { User } from "../types/user";
+import { getDb } from "../db/mongo";
+import { ObjectId } from "mongodb";
 import { authenticate } from "./authController";
-
-const file = path.join(__dirname, "../tasks.json");
-console.log(__dirname);
-
-console.log("full-path", path.join(__dirname, "../tasks.json"));
-if (!fs.existsSync(file)) {
-    fs.writeFileSync(file, "[]");
-}
-
-// file path
-if (!fs.existsSync(file)) {
-    console.log(`Creating empty tasks file at: ${file}`);
-    fs.writeFileSync(file, "[]", 'utf8');
-}
+import { Todo, Reply, Comment } from "../types/todoMongo";
 
 // Allowed values for tasks
 const allowedPriorities = ["low", "medium", "high"];
@@ -25,178 +10,123 @@ const allowedStatuses = ["pending", "in-progress", "completed"];
 const allowedLabels = ["work", "personal", "urgent", "misc"];
 
 // Helper to send errors
-function sendError(res: ServerResponse, message: string): void {
+export function sendError(res: ServerResponse, message: string): void {
   res.writeHead(400, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ error: message }));
 }
 
+interface User {
+  _id?: ObjectId;
+  username: string;
+  email: string;
+  password: string;
+}
+
+export function getTasksCollection() {
+  return getDb().collection("tasks");
+}
+
 // CREATE TASK
-export const createTask = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-  console.log("creatinggggsk");
-  const user = authenticate(req);
-  if (!user) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "Unauthorized" }));
-    return;
-  }
-
-  let body = "";
-  req.on("data", (chunk) => {
-    body += chunk.toString();
-  });
-
-  req.on("end", () => {
-    const {
-      title,
-      description,
-      priority,
-      status,
-      labels,
-      completed,
-    }: Partial<Todo> = JSON.parse(body);
-
-    //  VALIDATIONS
-    if (!title?.trim()) return sendError(res, "Title is required.");
-    if (!description?.trim()) return sendError(res, "Description is required.");
-
-    if (!priority?.trim()) return sendError(res, "Priority is required.");
-    if (!allowedPriorities.includes(priority))
-      return sendError(res, "Invalid priority provided.");
-
-    if (!status?.trim()) return sendError(res, "Status is required.");
-    if (!allowedStatuses.includes(status))
-      return sendError(res, "Invalid status provided.");
-
-    if (!labels || !Array.isArray(labels) || labels.length === 0)
-      return sendError(res, "At least one label is required.");
-
-    if (!labels.every((label) => allowedLabels.includes(label)))
-      return sendError(res, "Invalid label(s) provided.");
-
-    if (typeof completed !== "boolean") {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Completed must be boolean" }));
+export const createTask = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Unauthorized" }));
+      return;
     }
 
-    console.log("reading with json", JSON.parse(fs.readFileSync(file, "utf8")))
-    console.log("reading without json", fs.readFileSync(file, "utf8"))
-    console.log("done reading")
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
 
-    // async/await issue
-    const tasks: Todo[] = JSON.parse(fs.readFileSync(file, "utf8"));
+    req.on("end", async () => {
+      const {
+        title,
+        description,
+        priority,
+        status,
+        labels,
+        completed,
+      }: Partial<Todo> = JSON.parse(body);
 
-    const newTask: Todo = {
-      id: tasks.length ? tasks[tasks.length - 1].id + 1 : 1,
-      title: title.trim(),
-      description: description.trim(),
-      priority,
-      status,
-      labels,
-      completed,
-      userId: user.id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+      // VALIDATIONS
+      if (!title?.trim()) return sendError(res, "Title is required.");
+      if (!description?.trim())
+        return sendError(res, "Description is required.");
+      if (!priority?.trim()) return sendError(res, "Priority is required.");
+      if (!allowedPriorities.includes(priority))
+        return sendError(res, "Invalid priority provided.");
+      if (!status?.trim()) return sendError(res, "Status is required.");
+      if (!allowedStatuses.includes(status))
+        return sendError(res, "Invalid status provided.");
+      if (!labels || !Array.isArray(labels) || labels.length === 0)
+        return sendError(res, "At least one label is required.");
+      if (!labels.every((label) => allowedLabels.includes(label)))
+        return sendError(res, "Invalid label(s) provided.");
+      if (typeof completed !== "boolean")
+        return sendError(res, "Completed must be boolean");
 
-    tasks.push(newTask);
-    fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
+      const tasksCol = getTasksCollection();
 
-    res.writeHead(201, { "Content-Type": "application/json" });
-    res.end(
-      JSON.stringify({ message: "Task created successfully", task: newTask })
-    );
-  });
+      const newTask: Todo = {
+        title: title.trim(),
+        description: description.trim(),
+        priority,
+        status,
+        labels,
+        completed,
+        userId: user._id, // MongoDB user id
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const result = await tasksCol.insertOne(newTask);
+
+      res.writeHead(201, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          message: "Task created successfully",
+          task: { ...newTask, _id: result.insertedId },
+        })
+      );
+    });
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
 };
 
 // GET TASKS
-export function getTasks(req: IncomingMessage, res: ServerResponse): void {
-  fs.readFile(file, "utf8", (err, data) => {
-    if (err) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ error: "Internal server error" }));
-    }
+export const getTasks = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const tasksCol = getTasksCollection();
 
-    let tasks: Todo[] = [];
-    try {
-      tasks = JSON.parse(data);
-      if (!Array.isArray(tasks)) tasks = [];
-    } catch {
-      tasks = [];
-    }
+    // Fetch all tasks
+    const tasksArray = (await tasksCol.find({}).toArray()) as Todo[];
 
     // Sort newest first
-    tasks.sort(
+    tasksArray.sort(
       (a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
+    // Parse query parameters for filtering & pagination
     const fullUrl = new URL(req.url || "", `http://${req.headers.host}`);
     const queryParams = Object.fromEntries(fullUrl.searchParams.entries());
 
     const page = Math.max(1, parseInt(queryParams.page || "1"));
     const limit = Math.max(1, parseInt(queryParams.limit || "10"));
 
-    // --- Validate filters ---
-    for (const key in queryParams) {
-      const value = queryParams[key].toLowerCase();
-
-
-      if (
-        ![
-          "page",
-          "limit",
-          "status",
-          "priority",
-          "labels",
-          "search",
-          "completed",
-        ].includes(key)
-      ) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ error: `Invalid query key: ${key}` }));
-      }
-
-      if (key === "completed") continue;
-
-      if (key === "status" && !allowedStatuses.includes(value)) {
-        return res.end(
-          JSON.stringify({
-            totalData: 0,
-            totalPages: 0,
-            currentPage: page,
-            limit,
-            data: [],
-          })
-        );
-      }
-
-      if (key === "priority" && !allowedPriorities.includes(value)) {
-        return res.end(
-          JSON.stringify({
-            totalData: 0,
-            totalPages: 0,
-            currentPage: page,
-            limit,
-            data: [],
-          })
-        );
-      }
-
-      if (key === "labels" && !allowedLabels.includes(value)) {
-        return res.end(
-          JSON.stringify({
-            totalData: 0,
-            totalPages: 0,
-            currentPage: page,
-            limit,
-            data: [],
-          })
-        );
-      }
-    }
-
-    // --- Apply filtering ---
-    let filteredTasks = [...tasks];
+    // Apply filters
+    let filteredTasks = [...tasksArray];
     for (const key in queryParams) {
       const value = queryParams[key].toLowerCase();
 
@@ -214,952 +144,932 @@ export function getTasks(req: IncomingMessage, res: ServerResponse): void {
             Array.isArray(task.labels) &&
             task.labels.map((label) => label.toLowerCase()).includes(value)
         );
-      } else if (key === "status" || key === "priority") {
-        filteredTasks = filteredTasks.filter(
-          (task) => task[key] && task[key].toLowerCase() === value
-        );
+      } else if (key === "status" && allowedStatuses.includes(value)) {
+        filteredTasks = filteredTasks.filter((task) => task.status === value);
+      } else if (key === "priority" && allowedPriorities.includes(value)) {
+        filteredTasks = filteredTasks.filter((task) => task.priority === value);
       } else if (key === "completed") {
-        
-        const isCompleted = value === "true"; 
-
+        const isCompleted = value === "true";
         filteredTasks = filteredTasks.filter(
           (task) => task.completed === isCompleted
         );
       }
     }
 
-    // --- Pagination ---
+    // Pagination
     const totalData = filteredTasks.length;
     const totalPages = totalData === 0 ? 0 : Math.ceil(totalData / limit);
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit;
-    const dataSlice =
-      startIndex < totalData ? filteredTasks.slice(startIndex, endIndex) : [];
+    const dataSlice = filteredTasks.slice(startIndex, endIndex);
 
-    const response = {
-      totalData,
-      totalPages,
-      currentPage: page,
-      limit,
-      data: dataSlice,
-    };
-
+    // Send response
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(response));
-  });
-}
-
-// Mark task as completed or incomplete
-export function toggleTaskCompletion(req: IncomingMessage, res: ServerResponse) {
-  const user = authenticate(req);
-  if (!user) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Unauthorized" }));
+    res.end(
+      JSON.stringify({
+        totalData,
+        totalPages,
+        currentPage: page,
+        limit,
+        data: dataSlice,
+      })
+    );
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
   }
+};
 
-  const urlParts = req.url?.split("/") || [];
-  const taskId = parseInt(urlParts[urlParts.length - 2] || "0");
-  const action = urlParts[urlParts.length - 1]; 
-
-  if (!taskId) {
-    res.writeHead(400, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Invalid task ID" }));
-  }
-
-  const data = fs.readFileSync(file, "utf8");
-  const tasks = JSON.parse(data) as Todo[];
-
-  const task = tasks.find((t) => t.id === taskId);
-  if (!task) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Task not found" }));
-  }
-
-  // Owner check
-  if (task.userId !== user.id) {
-    res.writeHead(403, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Forbidden: You can only modify your own tasks" }));
-  }
-
-  // Validate action
-  if (action !== "complete" && action !== "incomplete") {
-    res.writeHead(400, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Invalid action" }));
-  }
-
-  // Toggle
-  const newCompleted = action === "complete";
-  task.completed = newCompleted;
-  task.updatedAt = new Date().toISOString();
-
-  fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
-
-  res.writeHead(200, { "Content-Type": "application/json" });
-  return res.end(
-    JSON.stringify({
-      message: `Task marked as ${action}`,
-      task,
-    })
-  );
-}
-
-
-//  get Task By by ID
-export function getTaskById(req: IncomingMessage, res: ServerResponse): void {
-  const urlParts = req.url?.split("/") || [];
-  const idStr = urlParts[urlParts.length - 1];
-  const id = parseInt(idStr);
-
-  const data = fs.readFileSync(file, "utf8");
-  let tasks: Todo[] = [];
+// TOGGLE TASK COMPLETION
+export async function toggleTaskCompletion(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
   try {
-    tasks = JSON.parse(data);
-    if (!Array.isArray(tasks)) tasks = [];
-  } catch {
-    tasks = [];
-  }
-
-  const task = tasks.find((t) => t.id === id);
-
-  if (!task) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "Task not found" }));
-  }
-
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(task));
-}
-
-// UPDATED
-export function updateTask(req: IncomingMessage, res: ServerResponse): void {
-  const user = authenticate(req);
-
-  if (!user) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "Unauthorized" }));
-    return;
-  }
-
-  const urlParts = req.url?.split("/") || [];
-  const taskId = parseInt(urlParts[urlParts.length - 1]);
-  let body = "";
-
-  req.on("data", (chunk) => {
-    body += chunk;
-  });
-
-  req.on("end", () => {
-    let updatedData: Partial<
-      Pick<Todo, "title" | "description" | "status" | "priority" | "labels">
-    >;
-
-    try {
-      updatedData = JSON.parse(body);
-    } catch {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Invalid JSON" }));
+    const user = await authenticate(req);
+    if (!user) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Unauthorized" }));
     }
 
-    const data = fs.readFileSync(file, "utf8");
-    const tasks: Todo[] = JSON.parse(data);
+    const urlParts = req.url?.split("/") || [];
 
-    const index = tasks.findIndex((t) => t.id === taskId);
-    if (index === -1) {
+    const taskIdStr = urlParts[urlParts.length - 2];
+    const action = urlParts[urlParts.length - 1];
+
+    if (!ObjectId.isValid(taskIdStr)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Invalid task ID" }));
+    }
+
+    if (action !== "complete" && action !== "incomplete") {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Invalid action" }));
+    }
+
+    const taskId = new ObjectId(taskIdStr);
+    const tasksCol = getTasksCollection();
+
+    const task = await tasksCol.findOne({ _id: taskId });
+    if (!task) {
       res.writeHead(404, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Task not found" }));
+      res.end(JSON.stringify({ message: "Task not found" }));
+      return;
     }
 
-    if (tasks[index].userId !== user.id) {
+    const taskUserId =
+      task.userId && task.userId._bsontype === "ObjectID"
+        ? task.userId
+        : new ObjectId(task.userId);
+
+    if (!taskUserId.equals(user!._id)) {
       res.writeHead(403, { "Content-Type": "application/json" });
-      return res.end(
+      res.end(
         JSON.stringify({
-          message: "Forbidden: You can only update your own tasks",
+          message: "Forbidden: You can only modify your own tasks",
         })
       );
+      return;
     }
 
-    //  VALIDATIONS
-    const { title, description, status, priority, labels } = updatedData;
+    const newCompleted = action === "complete";
+    await tasksCol.updateOne(
+      { _id: taskId },
+      { $set: { completed: newCompleted, updatedAt: new Date().toISOString() } }
+    );
 
-    if (title !== undefined && title.trim() === "") {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Title cannot be empty" }));
-    }
-
-    if (description !== undefined && description.trim() === "") {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(
-        JSON.stringify({ message: "Description cannot be empty" })
-      );
-    }
-
-    if (priority !== undefined && priority.trim() === "") {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Priority cannot be empty" }));
-    }
-    if (status !== undefined && status.trim() === "") {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Status cannot be empty" }));
-    }
-    if (Array.isArray(labels) && labels.length === 0) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Labels cannot be empty" }));
-    }
-
-    if (status && !allowedStatuses.includes(status.toLowerCase())) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(
-        JSON.stringify({
-          message: `Invalid status.`,
-        })
-      );
-    }
-
-    if (priority && !allowedPriorities.includes(priority.toLowerCase())) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(
-        JSON.stringify({
-          message: `Invalid priority.`,
-        })
-      );
-    }
-
-    if (labels && Array.isArray(labels)) {
-      const invalidLabels = labels.filter(
-        (label) => !allowedLabels.includes(label.toLowerCase())
-      );
-      if (invalidLabels.length > 0) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        return res.end(
-          JSON.stringify({
-            message: `Invalid labels: ${invalidLabels.join(
-              ", "
-            )}. Allowed: ${allowedLabels.join(", ")}`,
-          })
-        );
-      }
-    }
-
-    // RETURNING UPDATE TASK
-    const taskToUpdate = tasks[index];
-
-    const updatedTask: Todo = {
-      ...taskToUpdate,
-      title: title !== undefined ? title.trim() : taskToUpdate.title,
-      description:
-        description !== undefined
-          ? description.trim()
-          : taskToUpdate.description,
-      status: status
-        ? (status.toLowerCase() as Todo["status"])
-        : taskToUpdate.status,
-      priority: priority
-        ? (priority.toLowerCase() as Todo["priority"])
-        : taskToUpdate.priority,
-      labels: labels ? labels.map((l) => l.toLowerCase()) : taskToUpdate.labels,
+    // return updated task object (merge original task with changes)
+    const updatedTask = {
+      ...task,
+      completed: newCompleted,
       updatedAt: new Date().toISOString(),
     };
 
-    tasks[index] = updatedTask;
-    fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
-
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(
-      JSON.stringify({ message: "Task updated successfully", updatedTask })
+      JSON.stringify({
+        message: `Task marked as ${action}`,
+        task: updatedTask,
+      })
     );
-  });
+  } catch (err) {
+    console.error(err);
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Server error" }));
+  }
+}
+
+// GET TASK BY ID
+export const getTaskById = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const urlParts = req.url?.split("/") || [];
+    const idStr = urlParts[urlParts.length - 1];
+
+    if (!ObjectId.isValid(idStr)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Invalid ID" }));
+    }
+
+    const tasksCol = getTasksCollection();
+    const task = await tasksCol.findOne({ _id: new ObjectId(idStr) });
+
+    if (!task) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Task not found" }));
+    }
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(task));
+  } catch (err) {
+    console.error(err);
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Server error" }));
+  }
+};
+
+// UPDATED
+export async function updateTask(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  try {
+    const user = await authenticate(req);
+    if (!user) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Unauthorized" }));
+      return;
+    }
+
+    const urlParts = req.url?.split("/") || [];
+    const taskId = urlParts[urlParts.length - 1];
+
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+
+    req.on("end", async () => {
+      let updatedData: Partial<
+        Pick<Todo, "title" | "description" | "status" | "priority" | "labels">
+      >;
+      try {
+        updatedData = JSON.parse(body);
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ message: "Invalid JSON" }));
+      }
+
+      const tasksCol = getTasksCollection();
+      const task = await tasksCol.findOne({ _id: new ObjectId(taskId) });
+
+      if (!task) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ message: "Task not found" }));
+      }
+
+      if (!task.userId.equals(user._id)) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        return res.end(
+          JSON.stringify({
+            message: "Forbidden: You can only update your own tasks",
+          })
+        );
+      }
+
+      // VALIDATIONS
+      const { title, description, status, priority, labels } = updatedData;
+      if (title !== undefined && title.trim() === "")
+        return sendError(res, "Title cannot be empty");
+      if (description !== undefined && description.trim() === "")
+        return sendError(res, "Description cannot be empty");
+      if (status && !allowedStatuses.includes(status.toLowerCase()))
+        return sendError(res, "Invalid status");
+      if (priority && !allowedPriorities.includes(priority.toLowerCase()))
+        return sendError(res, "Invalid priority");
+      if (
+        labels &&
+        (!Array.isArray(labels) ||
+          labels.some((l) => !allowedLabels.includes(l.toLowerCase())))
+      )
+        return sendError(res, "Invalid labels");
+
+      const updatePayload: Partial<Todo> = {
+        title: title !== undefined ? title.trim() : task.title,
+        description:
+          description !== undefined ? description.trim() : task.description,
+        status: status ? (status.toLowerCase() as Todo["status"]) : task.status,
+        priority: priority
+          ? (priority.toLowerCase() as Todo["priority"])
+          : task.priority,
+        labels: labels ? labels.map((l) => l.toLowerCase()) : task.labels,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await tasksCol.updateOne(
+        { _id: new ObjectId(taskId) },
+        { $set: updatePayload }
+      );
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          message: "Task updated successfully",
+          updatedTask: { ...task, ...updatePayload },
+        })
+      );
+    });
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
 }
 
 // DELETE TASK
-export function deleteTask(req: IncomingMessage, res: ServerResponse): void {
-  const user = authenticate(req);
-  if (!user) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "Unauthorized" }));
-    return;
-  }
-
-  const urlParts = req.url?.split("/") || [];
-  const taskId = parseInt(urlParts.pop() || "0");
-
-  const data = fs.readFileSync(file, "utf8");
-  let tasks: Todo[] = JSON.parse(data) as Todo[];
-
-  //  FIND TASK
-  const index = tasks.findIndex((t) => t.id === taskId);
-
-  if (index === -1) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "Task not found" }));
-    return;
-  }
-
-  //  OWNERSHIP CHECK (Using userId instead of username)
-  if (tasks[index].userId !== user.id) {
-    res.writeHead(403, { "Content-Type": "application/json" });
-    res.end(
-      JSON.stringify({
-        message: "Forbidden: You can only delete your own tasks",
-      })
-    );
-  }
-
-  //  DELETE AND SAVE
-  const [deletedTask] = tasks.splice(index, 1);
-  fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
-
-  //
-  res.writeHead(204, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ message: "Task deleted", deletedTask }));
-}
-
-// LIKE TASK
-export function likeTask(req: IncomingMessage, res: ServerResponse): void {
-  const user: User | null = authenticate(req);
-  if (!user) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "Unauthorized" }));
-    return;
-  }
-
-  // Extract taskId using the standard pop() method
-  const urlParts = req.url?.split("/") || [];
-  const taskIdStr = urlParts[urlParts.length - 2];
-  const taskId = parseInt(taskIdStr);
-
-  const data = fs.readFileSync(file, "utf8");
-  let tasks: Todo[] = JSON.parse(data) as Todo[];
-
-  const index = tasks.findIndex((t) => t.id === taskId);
-  if (index === -1) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "Task not found" }));
-    return;
-  }
-
-  let task = tasks[index];
-  let message: string;
-
-  if (task.userId !== user.id) {
-    res.writeHead(403, { "Content-Type": "application/json" });
-    res.end(
-      JSON.stringify({
-        message: "Forbidden: You can only like/unlike your own task.",
-      })
-    );
-    return;
-  }
-
-  if (typeof task.isLiked === "undefined") {
-    task.isLiked = false;
-  }
-  if (typeof task.likesCount !== "number") {
-    task.likesCount = 0;
-  }
-
-  //  Toggle like state
-  if (task.isLiked) {
-    task.likesCount = Math.max(task.likesCount - 1, 0);
-    task.isLiked = false;
-    message = "Task unliked!";
-  } else {
-    task.likesCount += 1;
-    task.isLiked = true;
-    message = "Task liked!";
-  }
-
-  //  Save updated task list
-  tasks[index] = task;
-  fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
-
-  //  Response
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ message: message, task: task }));
-}
-
-// POST COMMENT/ADD
-export function postTaskComment(req: IncomingMessage, res: ServerResponse) {
-  const user = authenticate(req);
-  if (!user) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Unauthorized" }));
-  }
-
-  // Extract ID using the new agreed upon method
-  const urlParts = req.url?.split("/") || [];
-  const taskIdStr = urlParts[urlParts.length - 2];
-  const taskId = parseInt(taskIdStr);
-
-  let body = "";
-
-  req.on("data", (chunk) => {
-    body += chunk.toString();
-  });
-
-  req.on("end", () => {
-    let parsedBody: { text?: string };
-    try {
-      parsedBody = JSON.parse(body);
-    } catch {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Invalid JSON body" }));
-    }
-    const { text } = parsedBody;
-
-    if (!text || text.trim() === "") {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Comment text is required" }));
-    }
-
-    const data = JSON.parse(fs.readFileSync(file, "utf8")); // Cast data to Todo[] and article to Todo | undefined
-    const tasks: Todo[] = data as Todo[];
-    const taskIndex = tasks.findIndex((t) => t.id === taskId);
-
-    if (taskIndex === -1) {
-      res.writeHead(404, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Task not found" }));
-    }
-
-    let task = tasks[taskIndex];
-
-    // Ensure task.comments exists and is an array (Type safety + Initialization)
-    if (!Array.isArray(task.comments)) {
-      task.comments = [];
-    } // Create the new Comment object (Type-safe using explicit properties)
-
-    const newComment: Comment = {
-      id: Date.now(),
-      userId: user.id, // Use ID
-      username: user.username, 
-      text: text.trim(),
-      date: new Date().toISOString(),
-      replies: [],
-    };
-
-    task.comments.push(newComment);
-    fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
-
-    res.writeHead(201, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(newComment));
-  });
-}
-
-// REPLY COMMENT
-export function replyTaskComment(req: IncomingMessage, res: ServerResponse) {
-  const user = authenticate(req);
-  if (!user) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Unauthorized" }));
-  }
-
-  const parts = req.url?.split("/") || [];
-
-  const taskId = parseInt(parts[3] || "0");
-  const commentId = parseInt(parts[5] || "0");
-
-  let body = "";
-
-  req.on("data", (chunk) => {
-    body += chunk.toString();
-  });
-
-  req.on("end", () => {
-    let parsedBody;
-    try {
-      parsedBody = JSON.parse(body);
-    } catch {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Invalid JSON body" }));
-    }
-    const { text } = parsedBody;
-
-    if (!text || text.trim() === "") {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Reply text is required" }));
-    }
-
-    const data = JSON.parse(fs.readFileSync(file, "utf8"));
-    const tasks: Todo[] = data as Todo[];
-
-    //  Find the Task
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) {
-      res.writeHead(404, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Task not found" }));
-    }
-
-    // Ensure comments array exists for type safety
-    if (!Array.isArray(task.comments)) {
-      res.writeHead(404, { "Content-Type": "application/json" });
-      return res.end(
-        JSON.stringify({ message: "Task comments structure is invalid" })
-      );
-    }
-
-    //  Find the Comment
-    const comment = (task.comments as Comment[]).find(
-      (c) => c.id === commentId
-    );
-    if (!comment) {
-      res.writeHead(404, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Comment not found" }));
-    }
-
-    // Only the comment author can reply.
-    if (comment.userId !== user.id) {
-      res.writeHead(403, { "Content-Type": "application/json" });
-      return res.end(
-        JSON.stringify({
-          message: "Forbidden: You can only reply to your own comment.",
-        })
-      );
-    }
-
-    //  Create the Reply object
-    const newReply: Reply = {
-      id: Date.now(),
-      userId: user.id,
-      username: user.username,
-      text: text.trim(),
-      date: new Date().toISOString(),
-    };
-
-    //  Add the Reply to the Comment
-    comment.replies = comment.replies || [];
-    comment.replies.push(newReply);
-
-    fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
-
-    res.writeHead(201, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(newReply));
-  });
-}
-
-// GET TASK COMMENTS
-export function getTaskComments(req: IncomingMessage, res: ServerResponse) {
-  //  AUTHENTICATION: Ensure the user is logged in
-  const user = authenticate(req);
-  if (!user) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Unauthorized" }));
-  }
-
-  // ID/comments
-  const urlParts = req.url?.split("/") || [];
-  const taskIdStr = urlParts[urlParts.length - 2];
-  const taskId = parseInt(taskIdStr);
-
-  const data = fs.readFileSync(file, "utf8");
-  const tasks: Todo[] = JSON.parse(data) as Todo[];
-
-  const task = tasks.find((t) => t.id === taskId);
-  if (!task) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Task not found" }));
-  }
-
-  //  EXTRACT COMMENTS
-
-  const comments = task.comments || [];
-
-  //  RESPONSE
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(comments));
-}
-
-// GET TASKS CREATED BY THE LOGGED-IN USER
-export function getMyTasks(req: IncomingMessage, res: ServerResponse) {
-  //  AUTHENTICATION
-  const user = authenticate(req);
-  if (!user) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Unauthorized" }));
-  }
-
-  //  READ DATA AND PARSE
-  const data = fs.readFileSync(file, "utf8");
-  const tasks = JSON.parse(data) as Todo[];
-
-  // 3. FILTER AND SORT
-  const userTasks = tasks
-    // FIX: Filter by userId (number) instead of username (string)
-    .filter((task) => task.userId === user.id)
-
-    .sort((a, b) => {
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-
-  // RESPONSE
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(userTasks));
-}
-
-// LIKE/UNLIKE A COMMENT
-export function likeComment(req: IncomingMessage, res: ServerResponse) {
-  const user = authenticate(req);
-  if (!user) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Unauthorized" }));
-  }
-
-  // COMMENT_IDs
-  const urlParts = req.url?.split("/") || [];
-  const taskId = parseInt(urlParts[3] || "0");
-  const commentId = parseInt(urlParts[5] || "0");
-
-  const data = fs.readFileSync(file, "utf8");
-  const tasks = JSON.parse(data) as Todo[];
-
-  //  Find Task
-  const taskIndex = tasks.findIndex((t) => t.id === taskId);
-  if (taskIndex === -1) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Task not found" }));
-  }
-  let task = tasks[taskIndex];
-
-  // Ensure comments array exists and is an array
-  if (!Array.isArray(task.comments)) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    return res.end(
-      JSON.stringify({ message: "Task comments structure is invalid" })
-    );
-  }
-
-  //  Find Comment
-  const comment = (task.comments as any).find(
-    (c: Comment) => c.id === commentId
-  );
-  if (!comment) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Comment not found" }));
-  }
-
-  //  Initialization and STRICT OWNERSHIP CHECK
-  if (typeof comment.isLiked === "undefined") comment.isLiked = false;
-
-  if (comment.userId !== user.id) {
-    res.writeHead(403, { "Content-Type": "application/json" });
-    return res.end(
-      JSON.stringify({
-        message: "Forbidden: You are only allowed to like your own comment",
-      })
-    );
-  }
-
-  //  Toggle Like State
-  let message;
-  if (comment.isLiked) {
-    comment.isLiked = false;
-    message = "Comment unliked!";
-  } else {
-    comment.isLiked = true;
-    message = "Comment liked!";
-  }
-
-  //  Save and Respond
-  tasks[taskIndex] = task;
-  fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
-
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ message, comment }));
-}
-
-// LIKE/UNLIKE A REPLY
-export function likeReply(req: IncomingMessage, res: ServerResponse) {
-  const user = authenticate(req);
-  if (!user) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Unauthorized" }));
-  }
-
-  // T_ID/comments/C_ID/replies/R_ID/like
-  const urlParts = req.url?.split("/") || [];
-  const taskId = parseInt(urlParts[3] || "0");
-  const commentId = parseInt(urlParts[5] || "0");
-  const replyId = parseInt(urlParts[7] || "0");
-
-  const data = fs.readFileSync(file, "utf8");
-  const tasks = JSON.parse(data) as Todo[];
-
-  //  Find Task
-  const taskIndex = tasks.findIndex((t) => t.id === taskId);
-  if (taskIndex === -1) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Task not found" }));
-  }
-  let task = tasks[taskIndex];
-
-  // Ensure comments array exists and is an array
-  if (!Array.isArray(task.comments)) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    return res.end(
-      JSON.stringify({ message: "Task comments structure is invalid" })
-    );
-  }
-
-  //  Find Comment
-  const comment = (task.comments as Comment[]).find((c) => c.id === commentId);
-  if (!comment) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Comment not found" }));
-  }
-
-  //  Find Reply
-  // Ensure replies array exists and is an array
-  if (!Array.isArray(comment.replies)) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    return res.end(
-      JSON.stringify({ message: "Comment replies structure is invalid" })
-    );
-  }
-
-  // Use 'as any' temporarily if Reply type isn't updated with isLiked
-  const reply = (comment.replies as any).find((r: Reply) => r.id === replyId);
-  if (!reply) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Reply not found" }));
-  }
-
-  // STRICT OWNERSHIP CHECK
-  if (reply.userId !== user.id) {
-    res.writeHead(403, { "Content-Type": "application/json" });
-    return res.end(
-      JSON.stringify({
-        message: "Forbidden: You are only allowed to like your own reply",
-      })
-    );
-  }
-
-  //  Initialize and Toggle Like State
-  if (typeof reply.isLiked === "undefined") reply.isLiked = false;
-
-  let message;
-  if (reply.isLiked) {
-    reply.isLiked = false;
-    message = "Reply unliked!";
-  } else {
-    reply.isLiked = true;
-    message = "Reply liked!";
-  }
-
-  // Save and Respond
-  tasks[taskIndex] = task;
-  fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ message, reply }));
-}
-
-// EDIT A COMMENT OR REPLY
-export function editCommentOrReply(req: IncomingMessage, res: ServerResponse) {
-  const user = authenticate(req);
-  console.log("User authenticated:", user ? user.username : "Failed");
-  if (!user) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Unauthorized" }));
-  }
-
-  const urlParts = req.url?.split("/") || [];
-  const taskId = parseInt(urlParts[3]);
-  const commentId = parseInt(urlParts[5]);
-  const isReply = urlParts.includes("replies");
-  const replyId = isReply ? parseInt(urlParts[7]) : null;
-
-  let body = "";
-  req.on("data", (chunk) => (body += chunk.toString()));
-  req.on("end", () => {
-    let parsedBody: { text?: string };
-    try {
-      parsedBody = JSON.parse(body);
-    } catch {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Invalid JSON body" }));
-    }
-    const { text } = parsedBody;
-
-    if (!text?.trim()) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Text cannot be empty." }));
-    }
-
-    const data = fs.readFileSync(file, "utf8");
-    const tasks: Todo[] = JSON.parse(data) as Todo[];
-
-    const taskIndex = tasks.findIndex((t) => t.id === taskId);
-    if (taskIndex === -1)
-      return res
-        .writeHead(404)
-        .end(JSON.stringify({ message: "Task not found" }));
-    let task = tasks[taskIndex];
-
-    //  Find the Comment
-    if (!Array.isArray(task.comments)) {
-      res.writeHead(404, { "Content-Type": "application/json" });
-      return res.end(
-        JSON.stringify({ message: "Task comments structure is invalid" })
-      );
-    }
-    const comment = task.comments.find((c) => c.id === commentId);
-
-    if (!comment)
-      return res
-        .writeHead(404)
-        .end(JSON.stringify({ message: "Comment not found" }));
-
-    if (isReply && replyId !== null) {
-      if (!Array.isArray(comment.replies)) {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        return res.end(
-          JSON.stringify({ message: "Comment replies structure is invalid" })
-        );
-      }
-      const reply = comment.replies.find((r) => r.id === replyId);
-
-      if (!reply)
-        return res
-          .writeHead(404)
-          .end(JSON.stringify({ message: "Reply not found" }));
-
-      // STRICT OWNERSHIP CHECK for Reply
-      if (reply.userId !== user.id) {
-        res.writeHead(403, { "Content-Type": "application/json" });
-        return res.end(
-          JSON.stringify({
-            message: "Forbidden: You are not allowed to edit this reply",
-          })
-        );
-      }
-
-      // Update Reply
-      reply.text = text.trim();
-      reply.updatedAt = new Date().toISOString();
-
-      // Final Save
-      fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
-
-      res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Reply updated!", reply }));
-    } else {
-      // STRICT OWNERSHIP CHECK for Comment
-      if (comment.userId !== user.id) {
-        res.writeHead(403, { "Content-Type": "application/json" });
-        return res.end(
-          JSON.stringify({
-            message: "Forbidden: You are not allowed to edit this comment",
-          })
-        );
-      }
-
-      // Update Comment
-      comment.text = text.trim();
-      comment.updatedAt = new Date().toISOString();
-
-      res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Comment updated!", comment }));
-    }
-  });
-}
-
-//  Delete a comment or reply
-export function deleteCommentOrReply(
+export const deleteTask = async (
   req: IncomingMessage,
   res: ServerResponse
-) {
-  const user = authenticate(req);
-  if (!user) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Unauthorized" }));
-  }
-
-  const urlParts = req.url?.split("/") || [];
-  const taskId = parseInt(urlParts[3] || "0");
-  const commentId = parseInt(urlParts[5] || "0");
-  const isReply = urlParts.includes("replies");
-  const replyId = isReply ? parseInt(urlParts[7] || "0") : null;
-
-  const data = fs.readFileSync(file, "utf8");
-  const tasks: Todo[] = JSON.parse(data) as Todo[];
-
-  //  Find Task Index
-  const taskIndex = tasks.findIndex((t) => t.id === taskId);
-
-  if (taskIndex === -1) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Task not found" }));
-  }
-
-  const task = tasks[taskIndex];
-  // Ensure comments array exists
-  if (!Array.isArray(task.comments)) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    return res.end(
-      JSON.stringify({ message: "Task comments structure is invalid" })
-    );
-  }
-
-  //  Find Comment Index
-  const commentIndex = task.comments.findIndex((c) => c.id === commentId);
-
-  if (commentIndex === -1) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Comment not found" }));
-  }
-
-  const comment = task.comments[commentIndex];
-
-  //  Logic Split (Reply or Comment Deletion)
-
-  if (isReply && replyId !== null) {
-    // Ensure replies array exists
-    if (!Array.isArray(comment.replies)) {
-      res.writeHead(404, { "Content-Type": "application/json" });
-      return res.end(
-        JSON.stringify({ message: "Comment replies structure is invalid" })
-      );
-    }
-    const replyIndex = comment.replies.findIndex((r) => r.id === replyId);
-
-    if (replyIndex === -1) {
-      res.writeHead(404, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ message: "Reply not found" }));
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Unauthorized" }));
+      return;
     }
 
-    const reply = comment.replies[replyIndex];
+    const urlParts = req.url?.split("/") || [];
+    const taskIdStr = urlParts[urlParts.length - 1];
 
-    // STRICT OWNERSHIP CHECK for Reply
-    if (reply.userId !== user.id) {
+    // Convert string ID to ObjectId
+    const { ObjectId } = await import("mongodb");
+    if (!ObjectId.isValid(taskIdStr)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Invalid task ID" }));
+      return;
+    }
+    const taskId = new ObjectId(taskIdStr);
+
+    const tasksCol = getTasksCollection();
+
+    // Find the task
+    const task = await tasksCol.findOne({ _id: taskId });
+    if (!task) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Task not found" }));
+      return;
+    }
+
+    // Check ownership
+    if (!task.userId.equals(user._id)) {
       res.writeHead(403, { "Content-Type": "application/json" });
-      return res.end(
+      res.end(
         JSON.stringify({
-          message: "Forbidden: You are not allowed to delete this reply",
+          message: "Forbidden: You can only delete your own tasks",
         })
       );
+      return;
     }
 
-    // Perform Deletion and Save
-    comment.replies.splice(replyIndex, 1);
+    // Delete task
+    const result = await tasksCol.deleteOne({ _id: taskId });
 
-    fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
-    res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ message: "Reply deleted successfully!" }));
-  } else {
-    // STRICT OWNERSHIP CHECK for Comment
-    if (comment.userId !== user.id) {
+    res.writeHead(204, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        message: "Task deleted successfully",
+        deletedCount: result.deletedCount,
+      })
+    );
+  } catch (err) {
+    console.error(err);
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "Server error" }));
+  }
+};
+
+// LIKE TASK
+export const likeTask = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Unauthorized" }));
+
+      return;
+    }
+
+    const urlParts = req.url?.split("/") || [];
+    const taskIdStr = urlParts[urlParts.length - 2]; // assuming /tasks/:id/like
+    if (!ObjectId.isValid(taskIdStr)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Invalid task ID" }));
+
+      return;
+    }
+    const taskId = new ObjectId(taskIdStr);
+
+    const tasksCol = getTasksCollection();
+    const task = await tasksCol.findOne({ _id: taskId });
+
+    if (!task) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Task not found" }));
+      return;
+    }
+
+    // Check ownership
+    if (!task.userId.equals(user._id)) {
       res.writeHead(403, { "Content-Type": "application/json" });
-      return res.end(
+      res.end(
         JSON.stringify({
-          message: "Forbidden: You are not allowed to delete this comment",
+          message: "Forbidden: You can only like your own tasks",
         })
+      );
+      return;
+    }
+
+    // Toggle like
+    let message = "";
+    let liked = false;
+    const likedBy = Array.isArray(task.likedBy) ? task.likedBy : [];
+
+    let newLikedBy: ObjectId[];
+
+    if (likedBy.some((id: ObjectId) => id.equals(user._id))) {
+      // User already liked → unlike
+      newLikedBy = likedBy.filter((id: ObjectId) => !id.equals(user._id));
+      message = "Task unliked!";
+      liked = false;
+    } else {
+      // Like
+      newLikedBy = [...likedBy, user._id];
+      message = "Task liked!";
+      liked = true;
+    }
+
+    await tasksCol.updateOne(
+      { _id: taskId },
+      { $set: { likedBy: newLikedBy, likes: newLikedBy.length } }
+    );
+
+    // Send response using updated array
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        message,
+        task: {
+          ...task,
+          likedBy: newLikedBy,
+          likes: newLikedBy.length,
+          liked,
+        },
+      })
+    );
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+};
+
+// POST COMMENT/ADD
+export const postTaskComment = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) return sendError(res, "Unauthorized");
+
+    const urlParts = req.url?.split("/") || [];
+    const taskIdStr = urlParts[urlParts.length - 2];
+
+    if (!ObjectId.isValid(taskIdStr)) return sendError(res, "Invalid task ID");
+    const taskId = new ObjectId(taskIdStr);
+
+    let body = "";
+    req.on("data", (chunk) => (body += chunk.toString()));
+    req.on("end", async () => {
+      let { text }: { text?: string } = {};
+      try {
+        ({ text } = JSON.parse(body));
+      } catch {
+        return sendError(res, "Invalid JSON");
+      }
+
+      if (!text || text.trim() === "")
+        return sendError(res, "Comment cannot be empty");
+
+      const tasksCol = getTasksCollection();
+
+      const task = await tasksCol.findOne({ _id: taskId });
+      if (!task) return sendError(res, "Task not found");
+
+      if (!task.userId.equals(user._id)) {
+        return sendError(
+          res,
+          "Forbidden: Only the task owner can add comments."
+        );
+      }
+
+      // Prepare comment object
+      const newComment: Comment = {
+        _id: new ObjectId(),
+        userId: user._id,
+        username: user.username,
+        text: text.trim(),
+        replies: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const updatedComments = Array.isArray(task.comments)
+        ? [...task.comments, newComment]
+        : [newComment];
+
+      await tasksCol.updateOne(
+        { _id: taskId },
+        {
+          $set: {
+            comments: updatedComments,
+            updatedAt: new Date().toISOString(),
+          },
+        }
+      );
+
+      res.writeHead(201, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          message: "Comment added successfully",
+          comment: newComment,
+        })
+      );
+    });
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+};
+
+// REPLY TO COMMENT
+export const replyTaskComment = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) return sendError(res, "Unauthorized");
+
+    const urlParts = req.url?.split("/") || [];
+    const commentIdStr = urlParts[urlParts.length - 2];
+
+    if (!ObjectId.isValid(commentIdStr))
+      return sendError(res, "Invalid comment ID");
+
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+
+    req.on("end", async () => {
+      let replyData: Partial<Reply>;
+      try {
+        replyData = JSON.parse(body);
+      } catch {
+        return sendError(res, "Invalid JSON");
+      }
+
+      const { text } = replyData;
+      if (!text || text.trim() === "")
+        return sendError(res, "Text cannot be empty");
+
+      const tasksCol = getTasksCollection();
+
+      // Find the task that contains this comment
+      const task = await tasksCol.findOne({
+        "comments._id": new ObjectId(commentIdStr),
+      });
+
+      if (!task) return sendError(res, "Comment not found");
+
+      if (!task.userId.equals(user._id)) {
+        return sendError(
+          res,
+          "Forbidden: Only the task owner can reply to this comment."
+        );
+      }
+
+      const reply: Reply = {
+        _id: new ObjectId(),
+        userId: user._id,
+        username: user.username,
+        text: text.trim(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Push reply into the comment's replies array
+      await tasksCol.updateOne(
+        { "comments._id": new ObjectId(commentIdStr) },
+        { $push: { "comments.$.replies": reply } as any }
+      );
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          message: "Reply added successfully",
+          reply,
+        })
+      );
+    });
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+};
+
+// GET TASK COMMENTS
+export const getTaskComments = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) return sendError(res, "Unauthorized");
+
+    const urlParts = req.url?.split("/") || [];
+    const taskIdStr = urlParts[urlParts.length - 2];
+
+    if (!ObjectId.isValid(taskIdStr)) return sendError(res, "Invalid task ID");
+
+    const tasksCol = getTasksCollection();
+    const task = await tasksCol.findOne({ _id: new ObjectId(taskIdStr) });
+
+    if (!task) return sendError(res, "Task not found");
+
+    // User checking
+
+    if (!task.userId.equals(user._id)) {
+      return sendError(
+        res,
+        "Forbidden: You can only view your own task comments."
       );
     }
 
-    // Perform Deletion and Save
-    task.comments.splice(commentIndex, 1);
-
-    fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
     res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(
-      JSON.stringify({ message: "Comment deleted successfully!" })
+    res.end(JSON.stringify({ comments: task.comments || [] }));
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+};
+
+// GET TASKS CREATED BY THE LOGGED-IN USER
+export const getMyTasks = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) return sendError(res, "Unauthorized");
+
+    const tasksCol = getTasksCollection();
+
+    // Fetch all tasks created by this user
+    const tasksArray = (await tasksCol
+      .find({ userId: user._id })
+      .toArray()) as Todo[];
+
+    // Sort newest first
+    tasksArray.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
+
+    // Parse query parameters
+    const fullUrl = new URL(req.url || "", `http://${req.headers.host}`);
+    const queryParams = Object.fromEntries(fullUrl.searchParams.entries());
+
+    const page = Math.max(1, parseInt(queryParams.page || "1"));
+    const limit = Math.max(1, parseInt(queryParams.limit || "10"));
+
+    // Apply filters if any
+    let filteredTasks = [...tasksArray];
+    for (const key in queryParams) {
+      const value = queryParams[key].toLowerCase();
+
+      if (key === "search") {
+        filteredTasks = filteredTasks.filter(
+          (task) =>
+            task.title.toLowerCase().includes(value) ||
+            task.description.toLowerCase().includes(value) ||
+            (Array.isArray(task.labels) &&
+              task.labels.some((label) => label.toLowerCase().includes(value)))
+        );
+      } else if (key === "labels") {
+        filteredTasks = filteredTasks.filter(
+          (task) =>
+            Array.isArray(task.labels) &&
+            task.labels.map((l) => l.toLowerCase()).includes(value)
+        );
+      } else if (key === "status" && allowedStatuses.includes(value)) {
+        filteredTasks = filteredTasks.filter((task) => task.status === value);
+      } else if (key === "priority" && allowedPriorities.includes(value)) {
+        filteredTasks = filteredTasks.filter((task) => task.priority === value);
+      } else if (key === "completed") {
+        const isCompleted = value === "true";
+        filteredTasks = filteredTasks.filter(
+          (task) => task.completed === isCompleted
+        );
+      }
+    }
+
+    // Pagination
+    const totalData = filteredTasks.length;
+    const totalPages = totalData === 0 ? 0 : Math.ceil(totalData / limit);
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const dataSlice = filteredTasks.slice(startIndex, endIndex);
+
+    // Send response
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        totalData,
+        totalPages,
+        currentPage: page,
+        limit,
+        data: dataSlice,
+      })
+    );
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+};
+
+// LIKE/UNLIKE A COMMENT
+export const likeComment = async (
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> => {
+  try {
+    const user = await authenticate(req);
+    if (!user) return sendError(res, "Unauthorized");
+
+    const urlParts = req.url?.split("/") || [];
+    const commentIdStr = urlParts[urlParts.length - 2];
+
+    if (!ObjectId.isValid(commentIdStr))
+      return sendError(res, "Invalid comment ID");
+
+    const tasksCol = getTasksCollection();
+
+    // Find the comment within any task
+    const task = await tasksCol.findOne({
+      "comments._id": new ObjectId(commentIdStr),
+    });
+    if (!task) return sendError(res, "Comment not found");
+
+    if (!task.userId.equals(user._id)) {
+      return sendError(res, "Forbidden: Only the task owner can like comment");
+    }
+
+    const comment = task.comments.find((c: Comment) =>
+      c._id?.equals(new ObjectId(commentIdStr))
+    );
+
+    if (!comment) return sendError(res, "Comment not found");
+
+    // Toggle like
+    let liked = false;
+    const likedBy: ObjectId[] = Array.isArray(comment.likedBy)
+      ? comment.likedBy
+      : [];
+
+    let newLikedBy: ObjectId[];
+
+    if (likedBy.some((id) => id.equals(user._id))) {
+      // Unlike
+      newLikedBy = likedBy.filter((id) => !id.equals(user._id));
+      liked = false;
+    } else {
+      // Like
+      newLikedBy = [...likedBy, user._id];
+      liked = true;
+    }
+
+    // Update the comment's likedBy and likes in MongoDB
+    await tasksCol.updateOne(
+      { "comments._id": new ObjectId(commentIdStr) },
+      {
+        $set: {
+          "comments.$.likedBy": newLikedBy,
+          "comments.$.likes": newLikedBy.length,
+          "comments.$.updatedAt": new Date().toISOString(),
+        },
+      }
+    );
+
+    // Update local comment object for response
+    comment.likedBy = newLikedBy;
+    comment.likes = newLikedBy.length;
+    comment.liked = liked;
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        message: liked ? "Comment liked!" : "Comment unliked!",
+        comment,
+      })
+    );
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+};
+
+// LIKE/UNLIKE A REPLY
+export async function likeReply(req: IncomingMessage, res: ServerResponse) {
+  try {
+    const user = await authenticate(req);
+    if (!user) return sendError(res, "Unauthorized");
+
+    const urlParts = req.url?.split("/") || [];
+    const replyIdStr = urlParts[urlParts.length - 2];
+    if (!ObjectId.isValid(replyIdStr))
+      return sendError(res, "Invalid reply ID");
+
+    const tasksCol = getTasksCollection();
+
+    // Find the task containing the reply
+    const task = await tasksCol.findOne({
+      "comments.replies._id": new ObjectId(replyIdStr),
+    });
+    if (!task) return sendError(res, "Reply not found");
+
+    if (!task.userId.equals(user._id)) {
+      return sendError(
+        res,
+        "Forbidden: Only the task owner can like reply's comment."
+      );
+    }
+
+    // Find the specific comment containing the reply
+    const comment = task.comments.find((c: Comment) =>
+      c.replies.some((r: Reply) => r._id?.equals(new ObjectId(replyIdStr)))
+    );
+    if (!comment) return sendError(res, "Reply not found in any comment");
+
+    // Find the reply
+    const reply = comment.replies.find((r: Reply) =>
+      r._id?.equals(new ObjectId(replyIdStr))
+    );
+    if (!reply) return sendError(res, "Reply not found");
+
+    // Initialize likedBy array
+    // Toggle like for reply
+    let liked = false;
+    const likedBy: ObjectId[] = Array.isArray(reply.likedBy)
+      ? reply.likedBy
+      : [];
+
+    if (likedBy.some((id) => id.equals(user._id))) {
+      // Unlike
+      const newLikedBy = likedBy.filter((id) => !id.equals(user._id));
+      await tasksCol.updateOne(
+        { "comments.replies._id": new ObjectId(replyIdStr) },
+        {
+          $set: {
+            "comments.$[].replies.$[r].likedBy": newLikedBy,
+            "comments.$[].replies.$[r].likes": newLikedBy.length,
+          },
+        },
+        { arrayFilters: [{ "r._id": new ObjectId(replyIdStr) }] }
+      );
+      liked = false;
+      reply.likes = newLikedBy.length;
+      reply.likedBy = newLikedBy;
+    } else {
+      // Like
+      const newLikedBy = [...likedBy, user._id];
+      await tasksCol.updateOne(
+        { "comments.replies._id": new ObjectId(replyIdStr) },
+        {
+          $set: {
+            "comments.$[].replies.$[r].likedBy": newLikedBy,
+            "comments.$[].replies.$[r].likes": newLikedBy.length,
+          },
+        },
+        { arrayFilters: [{ "r._id": new ObjectId(replyIdStr) }] }
+      );
+      liked = true;
+      reply.likes = newLikedBy.length;
+      reply.likedBy = newLikedBy;
+    }
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        message: liked ? "Reply liked!" : "Reply unliked!",
+        reply: { ...reply, liked },
+      })
+    );
+  } catch (err) {
+    console.error(err);
+    sendError(res, "Server error");
+  }
+}
+
+//  Delete a comment or reply
+export async function deleteCommentOrReply(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  try {
+    const user = await authenticate(req);
+    if (!user || !user._id) return sendError(res, "Unauthorized");
+
+    const urlParts = req.url?.split("/").filter(Boolean) || [];
+    const idStr = urlParts[urlParts.length - 1];
+    if (!ObjectId.isValid(idStr)) return sendError(res, "Invalid ID");
+
+    const targetId = new ObjectId(idStr);
+    const ownerId = new ObjectId(user._id);
+    const isReply = urlParts.includes("replies");
+
+    const tasksCol = await getTasksCollection();
+
+    // Determine the query to find the parent task based on whether it's a comment or reply ID
+    const taskFindQuery = isReply
+      ? { "comments.replies._id": targetId }
+      : { "comments._id": targetId };
+
+    const task = await tasksCol.findOne(taskFindQuery, {
+      projection: { userId: 1 },
+    });
+
+    if (!task)
+      return sendError(res, isReply ? "Reply not found" : "Comment not found");
+
+    // Only the task owner can delete comments/replies on their task.
+    if (!task.userId.equals(user._id)) {
+      const type = isReply ? "replies" : "comments";
+      const errorMessage = `Forbidden: Only the task owner can delete ${type} on this task.`;
+      return sendError(res, errorMessage);
+    }
+
+    // (Reply)
+    if (isReply) {
+      const replyUpdateResult = await tasksCol.updateOne(
+        {
+          "comments.replies._id": targetId,
+          "comments.replies.userId": ownerId,
+        },
+        {
+          $pull: {
+            "comments.$[].replies": {
+              _id: targetId,
+              userId: ownerId,
+            } as any,
+          },
+        }
+      );
+
+      if (replyUpdateResult.modifiedCount > 0) {
+        res.writeHead(204, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ message: "Reply deleted successfully!" }));
+      }
+      return sendError(res, "Reply not found or forbidden to delete");
+    } else {
+      // Conditional Deletion (Comment)
+      const commentUpdateResult = await tasksCol.updateOne(
+        {
+          "comments._id": targetId,
+          "comments.userId": ownerId,
+        },
+        {
+          $pull: {
+            comments: {
+              _id: targetId,
+              userId: ownerId,
+            } as any,
+          },
+        }
+      );
+
+      if (commentUpdateResult.modifiedCount > 0) {
+        res.writeHead(204, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ message: "Comment deleted successfully!" }));
+      }
+      return sendError(res, "Comment not found or forbidden to delete");
+    }
+  } catch (err) {
+    console.error(err);
+    return sendError(res, "Internal Server Error");
   }
 }
